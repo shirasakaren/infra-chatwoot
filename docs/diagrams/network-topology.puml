@@ -1,0 +1,55 @@
+@startuml chatwoot-ta-network
+!theme plain
+title Chatwoot-TA — VPC Network Topology (10.42.0.0/16)
+
+skinparam roundCorner 8
+skinparam shadowing false
+
+rectangle "Internet" as net #fff7e6
+
+package "VPC  10.42.0.0/16" #f4faff {
+
+  node "IGW" as igw
+
+  package "AZ-1a (ap-southeast-1a)" #fffaf0 {
+    rectangle "public-a\n10.42.0.0/20" as pa
+    rectangle "private-a\n10.42.32.0/20\n(EKS nodes)" as ra
+    rectangle "db-a\n10.42.128.0/20\n(RDS/Redis)" as da
+    node "NAT-a" as nata
+  }
+
+  package "AZ-1b (ap-southeast-1b)" #fffaf0 {
+    rectangle "public-b\n10.42.16.0/20" as pb
+    rectangle "private-b\n10.42.48.0/20\n(EKS nodes)" as rb
+    rectangle "db-b\n10.42.144.0/20\n(RDS/Redis)" as db
+    node "NAT-b" as natb
+  }
+
+  rectangle "RT: public\n0.0.0.0/0 -> IGW" as rtpub
+  rectangle "RT: private-a\n0.0.0.0/0 -> NAT-a" as rtpa
+  rectangle "RT: private-b\n0.0.0.0/0 -> NAT-b" as rtpb
+  rectangle "RT: db-a / db-b\n(no default route)" as rtdb
+}
+
+net --> igw
+igw --> rtpub
+rtpub --> pa
+rtpub --> pb
+pa --> nata
+pb --> natb
+nata --> rtpa
+natb --> rtpb
+rtpa --> ra
+rtpb --> rb
+ra --> rtdb
+rb --> rtdb
+rtdb --> da
+rtdb --> db
+
+note right of rtpa
+  Per-AZ private RT pins egress to
+  the **same-AZ** NAT — failure of
+  NAT-a does NOT route through AZ-b.
+end note
+
+@enduml

@@ -1,0 +1,31 @@
+@startuml chatwoot-ta-ha
+!theme plain
+title Chatwoot-TA — What survives a failure?
+
+skinparam roundCorner 10
+skinparam shadowing false
+
+rectangle "Failure" as f
+rectangle "AZ-1a loses power" as az
+rectangle "EKS node dies" as node
+rectangle "RDS primary fails" as dbf
+rectangle "Redis primary fails" as rf
+rectangle "Pod crashes" as pc
+rectangle "Cloudflare PoP outage" as cdn
+
+rectangle "Result" as r
+rectangle "Service continues on AZ-1b\n(2 web + 2 sidekiq replicas\ntopology-spread; NAT-b ok)" as ok1
+rectangle "cluster-autoscaler launches\nreplacement; HPA holds capacity\nwith remaining node" as ok2
+rectangle "RDS Multi-AZ promotes\nstandby (~60-120s); app retries" as ok3
+rectangle "Auto-failover promotes\nreplica (~60s); client reconnects" as ok4
+rectangle "K8s restarts container;\nPDB ensures >=1 always Ready" as ok5
+rectangle "Cloudflare anycast\nfails over to nearest PoP" as ok6
+
+f --> az --> ok1
+f --> node --> ok2
+f --> dbf --> ok3
+f --> rf --> ok4
+f --> pc --> ok5
+f --> cdn --> ok6
+
+@enduml

@@ -1,0 +1,73 @@
+@startuml chatwoot-ta-architecture
+!theme plain
+title Chatwoot-TA — High-Level Architecture (HA on AWS)
+
+skinparam roundCorner 12
+skinparam shadowing false
+skinparam defaultFontName "Helvetica"
+skinparam ArrowColor #444
+skinparam linetype ortho
+
+actor "Visitor / Agent" as user
+
+cloud "Cloudflare\n(DNS + CDN, proxied)" as cf #f6821f
+
+package "AWS · ap-southeast-1" as aws #e6f0fa {
+
+  package "VPC 10.42.0.0/16" {
+
+    rectangle "AZ-1a" as az1 #fff7e6 {
+      rectangle "public subnet" as p1
+      rectangle "private subnet\n(EKS nodes)" as priv1
+      rectangle "db subnet" as db1
+    }
+
+    rectangle "AZ-1b" as az2 #fff7e6 {
+      rectangle "public subnet" as p2
+      rectangle "private subnet\n(EKS nodes)" as priv2
+      rectangle "db subnet" as db2
+    }
+
+    node "Application Load Balancer\n(ACM TLS, ALB Ingress Controller)" as alb
+
+    node "EKS Cluster (k8s 1.32)" as eks {
+      component "chatwoot/web\n×2 (HPA 2..8)" as web
+      component "chatwoot/sidekiq\n×2 (HPA 2..8)" as sk
+      component "ALB Controller\nESO / metrics-server\ncluster-autoscaler" as addons
+    }
+
+    database "RDS PostgreSQL 16\nMulti-AZ + pgvector" as rds #d9ead3
+    database "ElastiCache Redis 7\nprimary + replica" as redis #d9ead3
+
+    cloud "S3\n(ActiveStorage)" as s3 #fce5cd
+    cloud "ECR" as ecr #fce5cd
+    cloud "Secrets Manager\n+ External Secrets Op." as sm #fce5cd
+    cloud "CloudWatch Logs\n+ Fluent Bit" as cw #fce5cd
+    cloud "SES (outbound)" as ses #fce5cd
+  }
+}
+
+cloud "On-prem Proxmox\n(Keycloak — DO NOT TOUCH)" as kc #cfe2f3
+
+user --> cf : HTTPS\nsupport.labmgm.org
+cf --> alb : Full (Strict)\nACM cert
+alb --> web
+web ..> sk : enqueue
+web --> rds
+sk  --> rds
+web --> redis
+sk  --> redis
+web --> s3
+addons ..> sm : sync\n(IRSA)
+sm  ..> web : env vars via\nESO -> K8s Secret
+web --> ses : SMTP
+web ..> kc  : OIDC\n(env vars only)
+eks --> cw : pod + system logs
+
+note bottom of aws
+  All resources tagged Project=chatwoot-ta, Environment=ta,
+  ManagedBy=terraform — additive-only, never touches
+  pre-existing VPCs/clusters/zones in this shared account.
+end note
+
+@enduml

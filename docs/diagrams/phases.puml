@@ -1,0 +1,59 @@
+@startuml chatwoot-ta-phases
+!theme plain
+title Chatwoot-TA — Deployment Phases & Gates
+
+skinparam roundCorner 8
+skinparam shadowing false
+
+start
+:Phase 0 — Pre-flight + bootstrap +
+read-only discovery (writes
+terraform/discovery/do-not-touch.json);
+note right
+  Validates tools, AWS, Cloudflare,
+  quotas. Picks non-overlapping VPC CIDR.
+end note
+
+if (Operator typed 'proceed'?) then (yes)
+  :Phase 1 — VPC + 2 NAT GWs +
+  per-AZ subnets + SGs;
+  :**GATE**: 2 subnets x3 tiers,
+  2 NAT GWs available;
+  :Phase 2 — EKS + nodegroup
+  (custom LT, secondary EBS) +
+  IAM (Manajemen User + IRSA)
+  + ECR + S3;
+  :**GATE**: cluster ACTIVE,
+  >=2 nodes Ready, LVM-ready
+  disk visible via SSM;
+  :Phase 3 — RDS Multi-AZ +
+  Redis HA + Secrets Manager;
+  :**GATE**: RDS available + Multi-AZ,
+  Redis 2 nodes + auto-failover;
+  :load-secrets.sh writes the
+  Chatwoot secret payload;
+  :Phase 4 — ACM (DNS-validated
+  via Cloudflare) + SES domain
+  identity + DKIM/SPF/DMARC;
+  :**GATE**: ACM ISSUED;
+  :Phase 5 — Ansible:
+  LVM via SSM, cluster add-ons,
+  ESO, Chatwoot Helm,
+  Cloudflare app CNAME;
+  :**GATE**: /data mounted on all,
+  ExternalSecret synced,
+  >=2 web + >=2 sidekiq Ready,
+  ALB hostname present;
+  :Phase 6 — Optional integrations
+  status (already wired via ESO);
+  :Phase 7 — CloudWatch +
+  Fluent Bit + optional Datadog;
+  :Phase 8 — scripts/verify.sh
+  prints PASS/FAIL acceptance table;
+  stop
+else (no)
+  :Abort — no billable resource created;
+  stop
+endif
+
+@enduml
