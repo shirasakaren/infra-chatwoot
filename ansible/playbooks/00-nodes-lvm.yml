@@ -1,0 +1,128 @@
+---
+# 00-nodes-lvm.yml
+# Configure LVM on every EKS worker via SSM (no SSH).
+#
+# Each worker has an UNFORMATTED secondary EBS volume (provisioned by the
+# launch template in terraform/30-eks.tf). We:
+#   1. Identify the right block device by size (~10 GB, no filesystem).
+#   2. pvcreate → vgcreate vg_data → lvcreate lv_data using 100%FREE.
+#   3. mkfs.xfs and mount at /data.
+#   4. Persist via /etc/fstab using its UUID.
+#
+# Idempotent: re-running is a no-op once /data is mounted from the LV.
+
+- name: Configure LVM /data on EKS workers
+  hosts: all
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vars/main.yml
+  vars:
+    data_volume_gb: "{{ lookup('env','NODE_DATA_VOLUME_GB') | default(10, true) | int }}"
+    data_volume_size_bytes: "{{ (data_volume_gb | int) * 1024 * 1024 * 1024 }}"
+    data_mountpoint: /data
+    data_vg: vg_data
+    data_lv: lv_data
+
+  tasks:
+    - name: Ensure LVM2 utilities are installed (AL2023 has lvm2 by default)
+      ansible.builtin.dnf:
+        name: lvm2
+        state: present
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Re-gather block-device facts (ansible_devices)
+      ansible.builtin.setup:
+        filter: ansible_devices
+
+    - name: Identify the unformatted ~{{ data_volume_gb }}G EBS device
+      ansible.builtin.set_fact:
+        data_device: >-
+          {{
+            (ansible_devices
+              | dict2items
+              | selectattr('key', 'match', '^(nvme[0-9]+n[1-9][0-9]*|xvd[a-z]+)$')
+              | rejectattr('value.partitions', 'defined')
+              | selectattr('value.partitions', 'eq', {})
+              | selectattr('value.size_bytes', 'defined')
+              | selectattr('value.size_bytes', 'ge', (data_volume_size_bytes | int * 0.9) | int)
+              | selectattr('value.size_bytes', 'le', (data_volume_size_bytes | int * 1.1) | int)
+              | list
+              | first
+              | default({}, true)
+            ).key | default('')
+          }}
+
+    # The first filter chain in some Ansible versions skips 'partitions'-empty
+    # checks above; fall back to a simpler size-based pick if needed.
+    - name: Fallback identification if the strict filter found nothing
+      when: data_device == ''
+      block:
+        - name: List candidate devices by size
+          ansible.builtin.shell: |
+            set -e
+            lsblk -bndo NAME,SIZE,FSTYPE,MOUNTPOINT | awk -v target={{ data_volume_size_bytes }} '
+              $2+0 >= target*0.9 && $2+0 <= target*1.1 && $3=="" && $4=="" {print $1; exit}
+            '
+          register: lsblk_pick
+          changed_when: false
+
+        - name: Set data_device from lsblk fallback
+          ansible.builtin.set_fact:
+            data_device: "{{ lsblk_pick.stdout | trim }}"
+
+    - name: Fail if no candidate block device was found
+      ansible.builtin.fail:
+        msg: >-
+          No unformatted ~{{ data_volume_gb }}G block device found on
+          {{ inventory_hostname }}. Devices: {{ ansible_devices | dict2items | map(attribute='key') | list }}
+      when: data_device == ''
+
+    - name: Report selected device
+      ansible.builtin.debug:
+        msg: "Selected /dev/{{ data_device }} for LVM on {{ inventory_hostname }}"
+
+    - name: Create LVM physical volume
+      community.general.lvg:
+        vg: "{{ data_vg }}"
+        pvs: "/dev/{{ data_device }}"
+        state: present
+
+    - name: Create logical volume {{ data_lv }} (100% of vg_data)
+      community.general.lvol:
+        vg: "{{ data_vg }}"
+        lv: "{{ data_lv }}"
+        size: "100%FREE"
+        state: present
+        shrink: false
+
+    - name: Make XFS filesystem on the logical volume
+      community.general.filesystem:
+        fstype: xfs
+        dev: "/dev/{{ data_vg }}/{{ data_lv }}"
+
+    - name: Ensure mount point exists
+      ansible.builtin.file:
+        path: "{{ data_mountpoint }}"
+        state: directory
+        mode: "0755"
+
+    - name: Mount {{ data_mountpoint }} via /etc/fstab (by UUID)
+      ansible.posix.mount:
+        path: "{{ data_mountpoint }}"
+        src: "/dev/{{ data_vg }}/{{ data_lv }}"
+        fstype: xfs
+        opts: "defaults,noatime"
+        state: mounted
+
+    - name: Verify /data is mounted on the LV
+      ansible.builtin.shell: |
+        set -eo pipefail
+        df -hT {{ data_mountpoint }} | tail -1
+        lvs --noheadings {{ data_vg }}/{{ data_lv }}
+      register: lvm_verify
+      changed_when: false
+
+    - name: LVM status
+      ansible.builtin.debug:
+        var: lvm_verify.stdout_lines

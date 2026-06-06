@@ -1,0 +1,169 @@
+---
+# 30-chatwoot.yml
+# Install Chatwoot (community) via the official Helm chart and wire the
+# Cloudflare app DNS record to the ALB hostname once it materializes.
+
+- name: Install Chatwoot
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../vars/main.yml
+
+  tasks:
+    - name: Add chatwoot helm repo
+      kubernetes.core.helm_repository:
+        name: chatwoot
+        repo_url: "{{ chatwoot_chart_repo }}"
+
+    - name: Render Chatwoot values to a temp file
+      ansible.builtin.copy:
+        content: "{{ lookup('template', '../templates/chatwoot-values.yaml.j2') }}"
+        dest: "/tmp/chatwoot-values.{{ name_prefix }}.yaml"
+        mode: "0600"
+
+    - name: Helm upgrade --install chatwoot
+      kubernetes.core.helm:
+        name: chatwoot
+        chart_ref: chatwoot/chatwoot
+        chart_version: "{{ chatwoot_chart_version }}"
+        release_namespace: "{{ chatwoot_namespace }}"
+        create_namespace: true
+        values_files:
+          - "/tmp/chatwoot-values.{{ name_prefix }}.yaml"
+        wait: true
+        wait_timeout: 15m
+
+    - name: Wait for DB migration job to complete
+      kubernetes.core.k8s_info:
+        api_version: batch/v1
+        kind: Job
+        namespace: "{{ chatwoot_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/instance=chatwoot"
+      register: migrate_jobs
+      until: >-
+        migrate_jobs.resources
+        and (migrate_jobs.resources
+              | selectattr('metadata.name', 'search', '(db-migrate|migrate)')
+              | map(attribute='status.succeeded', default=0)
+              | list
+              | sum) >= 1
+      retries: 60
+      delay: 10
+      failed_when: false  # the chart may finish migrations before we poll
+
+    - name: Wait for >= {{ web_replicas }} chatwoot web pods Ready
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ chatwoot_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/component=web"
+      register: web_deploy
+      until: >-
+        web_deploy.resources
+        and (web_deploy.resources | map(attribute='status.readyReplicas', default=0) | sum) >= web_replicas
+      retries: 60
+      delay: 10
+
+    - name: Wait for >= {{ sidekiq_replicas }} chatwoot sidekiq pods Ready
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ chatwoot_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/component=sidekiq"
+      register: sk_deploy
+      until: >-
+        sk_deploy.resources
+        and (sk_deploy.resources | map(attribute='status.readyReplicas', default=0) | sum) >= sidekiq_replicas
+      retries: 60
+      delay: 10
+
+    - name: Read the ingress to grab the ALB hostname
+      kubernetes.core.k8s_info:
+        api_version: networking.k8s.io/v1
+        kind: Ingress
+        namespace: "{{ chatwoot_namespace }}"
+      register: ingress_info
+      until: >-
+        ingress_info.resources
+        and (ingress_info.resources[0].status.loadBalancer.ingress[0].hostname | default(''))
+            | length > 0
+      retries: 60
+      delay: 10
+
+    - name: Capture ALB hostname
+      ansible.builtin.set_fact:
+        alb_hostname: "{{ ingress_info.resources[0].status.loadBalancer.ingress[0].hostname }}"
+
+    - name: Show ALB hostname
+      ansible.builtin.debug:
+        msg: "ALB hostname: {{ alb_hostname }}"
+
+    # ----- Cloudflare app DNS (proxied; Full (Strict)) -----------------
+    - name: Look up Cloudflare zone ID
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones?name={{ cloudflare_zone }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ lookup('env','CLOUDFLARE_API_TOKEN') }}"
+          Content-Type: application/json
+        return_content: true
+      register: cf_zone
+
+    - name: Fail if zone not found
+      ansible.builtin.fail:
+        msg: "Cloudflare zone {{ cloudflare_zone }} not visible to this token"
+      when: cf_zone.json.result | length == 0
+
+    - name: Set zone id fact
+      ansible.builtin.set_fact:
+        cf_zone_id: "{{ cf_zone.json.result[0].id }}"
+
+    - name: Look up any existing app DNS record
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones/{{ cf_zone_id }}/dns_records?name={{ domain }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ lookup('env','CLOUDFLARE_API_TOKEN') }}"
+          Content-Type: application/json
+        return_content: true
+      register: cf_existing
+
+    - name: Create proxied CNAME record (if missing)
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones/{{ cf_zone_id }}/dns_records"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ lookup('env','CLOUDFLARE_API_TOKEN') }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          type: CNAME
+          name: "{{ domain }}"
+          content: "{{ alb_hostname }}"
+          ttl: 1
+          proxied: true
+          comment: "chatwoot-ta managed; ALB origin"
+        status_code: [200, 201]
+      when: cf_existing.json.result | length == 0
+
+    - name: Update existing CNAME record to point at the current ALB
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones/{{ cf_zone_id }}/dns_records/{{ cf_existing.json.result[0].id }}"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ lookup('env','CLOUDFLARE_API_TOKEN') }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          type: CNAME
+          name: "{{ domain }}"
+          content: "{{ alb_hostname }}"
+          ttl: 1
+          proxied: true
+          comment: "chatwoot-ta managed; ALB origin"
+        status_code: [200]
+      when: cf_existing.json.result | length > 0

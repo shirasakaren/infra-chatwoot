@@ -1,0 +1,60 @@
+name: terraform-apply
+
+# Manual dispatch only. The `production` Environment must be configured in the
+# repo Settings → Environments with a required reviewer; that adds the manual
+# approval gate before any apply runs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "apply" to confirm'
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event.inputs.confirm == 'apply'
+    env:
+      AWS_REGION: ap-southeast-1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.5
+          terraform_wrapper: false
+
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GHA_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform init
+        env:
+          STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          LOCK_TABLE:   ${{ secrets.TF_LOCK_TABLE }}
+        run: |
+          terraform -chdir=terraform init -input=false \
+            -backend-config="bucket=${STATE_BUCKET}" \
+            -backend-config="dynamodb_table=${LOCK_TABLE}" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="key=chatwoot-ta/terraform.tfstate"
+
+      - name: terraform apply
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_owner:           ${{ secrets.TF_VAR_OWNER }}
+          TF_VAR_name_prefix:     ${{ vars.TF_VAR_NAME_PREFIX }}
+          TF_VAR_region:          ${{ env.AWS_REGION }}
+          TF_VAR_domain:          ${{ vars.TF_VAR_DOMAIN }}
+          TF_VAR_cloudflare_zone: ${{ vars.TF_VAR_CLOUDFLARE_ZONE }}
+          TF_VAR_github_owner:    ${{ github.repository_owner }}
+          TF_VAR_github_repo:     ${{ github.event.repository.name }}
+        run: terraform -chdir=terraform apply -input=false -auto-approve

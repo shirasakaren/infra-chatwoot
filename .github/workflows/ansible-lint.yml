@@ -1,0 +1,30 @@
+name: ansible-lint
+
+on:
+  pull_request:
+    paths:
+      - "ansible/**"
+      - ".github/workflows/ansible-lint.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible + linters
+        run: |
+          pip install "ansible-core>=2.15" "ansible-lint>=24.0" "yamllint>=1.35"
+
+      - name: yamllint
+        run: yamllint -s ansible/
+
+      - name: ansible-lint
+        run: ansible-lint ansible/playbooks/

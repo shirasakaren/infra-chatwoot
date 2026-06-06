@@ -1,0 +1,99 @@
+# Chatwoot Helm values — rendered at deploy time.
+# Notes:
+#  - Bundled postgres/redis are disabled; we use external RDS + ElastiCache.
+#  - All credentials/secrets come from the K8s Secret synced by ESO ({{ chatwoot_k8s_secret }}).
+#  - ALB ingress is internet-facing, terminates TLS with the ACM cert from Phase 4.
+
+image:
+  repository: chatwoot/chatwoot
+  tag: v3.16.0
+  pullPolicy: IfNotPresent
+
+replicaCount: {{ web_replicas }}
+
+# Pull every key from the ESO-managed K8s Secret as an env var on every pod.
+envFromExistingSecret: {{ chatwoot_k8s_secret }}
+
+env:
+  POSTGRES_DATABASE: chatwoot
+  POSTGRES_USERNAME: chatwoot
+  RAILS_ENV: "{{ rails_env | default('production') }}"
+  RAILS_LOG_TO_STDOUT: "true"
+  INSTALLATION_NAME: "{{ installation_name | default('Chatwoot') }}"
+  DEFAULT_LOCALE: "{{ default_locale | default('en') }}"
+  FRONTEND_URL: "https://{{ domain }}"
+  HELPCENTER_URL: "https://{{ domain }}"
+  FORCE_SSL: "true"
+  ACTIVE_STORAGE_SERVICE: "amazon"
+  ENABLE_ACCOUNT_SIGNUP: "false"
+
+postgresql:
+  enabled: false
+
+redis:
+  enabled: false
+
+sidekiq:
+  replicaCount: {{ sidekiq_replicas }}
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    memory: 1Gi
+
+serviceAccount:
+  create: true
+  name: chatwoot
+  annotations:
+    eks.amazonaws.com/role-arn: "{{ irsa_chatwoot_role_arn }}"
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+autoscaling:
+  enabled: true
+  minReplicas: {{ web_replicas }}
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+
+# Spread web/sidekiq pods across our two AZs.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: chatwoot
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: "{{ acm_certificate_arn }}"
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/group.name: "{{ name_prefix }}"
+    alb.ingress.kubernetes.io/load-balancer-attributes: "idle_timeout.timeout_seconds=120"
+  hosts:
+    - host: "{{ domain }}"
+      paths:
+        - path: /
+          pathType: Prefix
+
+# The Chatwoot chart runs a db-migrate Job automatically pre-install/pre-upgrade.
+# (Earlier in this file we already set postgresql.enabled: false.)

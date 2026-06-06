@@ -1,0 +1,73 @@
+---
+# 99-verify.yml — Phase 8 acceptance from inside Ansible. Mirrors verify.sh
+# but uses kubernetes.core for direct K8s checks. Either path is sufficient
+# for the gate; deploy.sh runs verify.sh, but ops can also run this manually:
+#   ansible-playbook ansible/playbooks/99-verify.yml --extra-vars @tf.json
+
+- name: End-to-end verification
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../vars/main.yml
+
+  tasks:
+    - name: web Deployment readiness
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ chatwoot_namespace }}"
+        label_selectors: ["app.kubernetes.io/component=web"]
+      register: web
+
+    - name: sidekiq Deployment readiness
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ chatwoot_namespace }}"
+        label_selectors: ["app.kubernetes.io/component=sidekiq"]
+      register: sk
+
+    - name: HPA present
+      kubernetes.core.k8s_info:
+        api_version: autoscaling/v2
+        kind: HorizontalPodAutoscaler
+        namespace: "{{ chatwoot_namespace }}"
+      register: hpa
+
+    - name: PDB present
+      kubernetes.core.k8s_info:
+        api_version: policy/v1
+        kind: PodDisruptionBudget
+        namespace: "{{ chatwoot_namespace }}"
+      register: pdb
+
+    - name: Ingress has ALB hostname
+      kubernetes.core.k8s_info:
+        api_version: networking.k8s.io/v1
+        kind: Ingress
+        namespace: "{{ chatwoot_namespace }}"
+      register: ing
+
+    - name: ExternalSecret synced
+      kubernetes.core.k8s_info:
+        api_version: external-secrets.io/v1beta1
+        kind: ExternalSecret
+        name: chatwoot-env
+        namespace: "{{ chatwoot_namespace }}"
+      register: es
+
+    - name: Assertions
+      ansible.builtin.assert:
+        that:
+          - (web.resources | map(attribute='status.readyReplicas', default=0) | sum) >= web_replicas
+          - (sk.resources  | map(attribute='status.readyReplicas', default=0) | sum) >= sidekiq_replicas
+          - hpa.resources | length >= 1
+          - pdb.resources | length >= 1
+          - (ing.resources[0].status.loadBalancer.ingress[0].hostname | default('')) | length > 0
+          - >-
+            (es.resources[0].status.conditions
+              | selectattr('type','equalto','Ready')
+              | selectattr('status','equalto','True') | list | length) >= 1
+        fail_msg: "One or more acceptance checks failed — inspect registers above"
+        success_msg: "All Ansible-side acceptance checks PASS"

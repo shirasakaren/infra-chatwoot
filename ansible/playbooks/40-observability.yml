@@ -1,0 +1,78 @@
+---
+# 40-observability.yml
+# Ship pod + node logs to CloudWatch via Fluent Bit (DaemonSet, IRSA-free —
+# the node IAM role already has CloudWatchAgentServerPolicy). Conditionally
+# install the Datadog cluster agent if DATADOG_API_KEY is set.
+# Sentry / Scout are pure env-var integrations and need no agent here.
+
+- name: Observability — Fluent Bit + optional Datadog
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../vars/main.yml
+
+  tasks:
+    - name: Add aws-for-fluent-bit helm repo
+      kubernetes.core.helm_repository:
+        name: aws-fb
+        repo_url: https://aws.github.io/eks-charts
+
+    - name: Install/upgrade aws-for-fluent-bit
+      kubernetes.core.helm:
+        name: aws-for-fluent-bit
+        chart_ref: aws-fb/aws-for-fluent-bit
+        release_namespace: kube-system
+        create_namespace: false
+        wait: true
+        wait_timeout: 5m
+        values:
+          cloudWatchLogs:
+            enabled: true
+            region: "{{ aws_region }}"
+            logGroupName: "/aws/eks/{{ name_prefix }}/application"
+            autoCreateGroup: false
+            logStreamPrefix: "fluentbit-"
+          kinesis:
+            enabled: false
+          firehose:
+            enabled: false
+          elasticsearch:
+            enabled: false
+
+    # ----- Optional: Datadog cluster agent ------------------------------
+    - name: Add datadog helm repo (only if DATADOG_API_KEY is set)
+      kubernetes.core.helm_repository:
+        name: datadog
+        repo_url: https://helm.datadoghq.com
+      when: optional_env.DATADOG_API_KEY | length > 0
+
+    - name: Install/upgrade Datadog agent
+      kubernetes.core.helm:
+        name: datadog
+        chart_ref: datadog/datadog
+        release_namespace: datadog
+        create_namespace: true
+        wait: true
+        wait_timeout: 10m
+        values:
+          datadog:
+            apiKey: "{{ optional_env.DATADOG_API_KEY }}"
+            site: "{{ lookup('env','DATADOG_SITE') | default('datadoghq.com', true) }}"
+            clusterName: "{{ cluster_name }}"
+            logs:
+              enabled: true
+              containerCollectAll: true
+            apm:
+              portEnabled: true
+          clusterAgent:
+            enabled: true
+            replicas: 2
+            metricsProvider:
+              enabled: true
+      when: optional_env.DATADOG_API_KEY | length > 0
+
+    - name: Skip Datadog (no DATADOG_API_KEY set)
+      ansible.builtin.debug:
+        msg: "Datadog disabled (DATADOG_API_KEY blank in .env)"
+      when: optional_env.DATADOG_API_KEY | length == 0

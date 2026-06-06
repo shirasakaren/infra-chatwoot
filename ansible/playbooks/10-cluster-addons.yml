@@ -1,0 +1,131 @@
+---
+# 10-cluster-addons.yml
+# Install the cluster-wide add-ons Chatwoot depends on:
+#   - AWS Load Balancer Controller  (provisions the public ALB)
+#   - cluster-autoscaler            (scales the managed node group 2..max)
+#   - metrics-server                (HPA needs this)
+#   - external-secrets              (Secrets Manager → K8s secret sync)
+#
+# All add-ons use IRSA (role ARNs come from Terraform outputs).
+
+- name: Install EKS cluster add-ons
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../vars/main.yml
+
+  tasks:
+    # --------------------------------------------------------------
+    # AWS Load Balancer Controller
+    # --------------------------------------------------------------
+    - name: Add aws-load-balancer-controller helm repo
+      kubernetes.core.helm_repository:
+        name: eks
+        repo_url: https://aws.github.io/eks-charts
+
+    - name: Add autoscaler helm repo
+      kubernetes.core.helm_repository:
+        name: autoscaler
+        repo_url: https://kubernetes.github.io/autoscaler
+
+    - name: Add metrics-server helm repo
+      kubernetes.core.helm_repository:
+        name: metrics-server
+        repo_url: https://kubernetes-sigs.github.io/metrics-server/
+
+    - name: Add external-secrets helm repo
+      kubernetes.core.helm_repository:
+        name: external-secrets
+        repo_url: https://charts.external-secrets.io
+
+    - name: Install/upgrade aws-load-balancer-controller
+      kubernetes.core.helm:
+        name: aws-load-balancer-controller
+        chart_ref: eks/aws-load-balancer-controller
+        chart_version: "{{ alb_controller_chart_version }}"
+        release_namespace: kube-system
+        create_namespace: false
+        wait: true
+        wait_timeout: 10m
+        values:
+          clusterName: "{{ cluster_name }}"
+          region: "{{ aws_region }}"
+          vpcId: "{{ vpc_id }}"
+          serviceAccount:
+            create: true
+            name: aws-load-balancer-controller
+            annotations:
+              eks.amazonaws.com/role-arn: "{{ irsa_alb_controller_role_arn }}"
+          replicaCount: 2
+
+    # --------------------------------------------------------------
+    # cluster-autoscaler
+    # --------------------------------------------------------------
+    - name: Install/upgrade cluster-autoscaler
+      kubernetes.core.helm:
+        name: cluster-autoscaler
+        chart_ref: autoscaler/cluster-autoscaler
+        chart_version: "{{ cluster_autoscaler_chart_version }}"
+        release_namespace: kube-system
+        create_namespace: false
+        wait: true
+        wait_timeout: 5m
+        values:
+          autoDiscovery:
+            clusterName: "{{ cluster_name }}"
+          awsRegion: "{{ aws_region }}"
+          rbac:
+            serviceAccount:
+              create: true
+              name: cluster-autoscaler
+              annotations:
+                eks.amazonaws.com/role-arn: "{{ irsa_cluster_autoscaler_role_arn }}"
+          extraArgs:
+            balance-similar-node-groups: "true"
+            skip-nodes-with-local-storage: "false"
+            expander: "least-waste"
+
+    # --------------------------------------------------------------
+    # metrics-server (HPA dependency)
+    # --------------------------------------------------------------
+    - name: Install/upgrade metrics-server
+      kubernetes.core.helm:
+        name: metrics-server
+        chart_ref: metrics-server/metrics-server
+        chart_version: "{{ metrics_server_chart_version }}"
+        release_namespace: kube-system
+        create_namespace: false
+        wait: true
+        wait_timeout: 5m
+        values:
+          args:
+            - --kubelet-insecure-tls
+            - --kubelet-preferred-address-types=InternalIP
+
+    # --------------------------------------------------------------
+    # External Secrets Operator
+    # --------------------------------------------------------------
+    - name: Create external-secrets namespace
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Namespace
+        name: external-secrets
+        state: present
+
+    - name: Install/upgrade external-secrets operator
+      kubernetes.core.helm:
+        name: external-secrets
+        chart_ref: external-secrets/external-secrets
+        chart_version: "{{ external_secrets_chart_version }}"
+        release_namespace: external-secrets
+        create_namespace: false
+        wait: true
+        wait_timeout: 5m
+        values:
+          installCRDs: true
+          serviceAccount:
+            create: true
+            name: external-secrets
+            annotations:
+              eks.amazonaws.com/role-arn: "{{ irsa_external_secrets_role_arn }}"

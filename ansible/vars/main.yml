@@ -1,0 +1,52 @@
+---
+# ansible/vars/main.yml
+# Common variables. Most concrete values are pulled from Terraform outputs at
+# playbook runtime by scripts/run-ansible.sh (or deploy.sh) and injected via
+# --extra-vars / @vars-from-tf.json. Defaults below are used only when an
+# override isn't passed.
+
+name_prefix: "{{ lookup('env','NAME_PREFIX') | default('cwta', true) }}"
+aws_region:  "{{ lookup('env','AWS_REGION')  | default('ap-southeast-1', true) }}"
+domain:      "{{ lookup('env','DOMAIN')      | default('support.labmgm.org', true) }}"
+cloudflare_zone: "{{ lookup('env','CLOUDFLARE_ZONE') | default('labmgm.org', true) }}"
+
+# Filled by deploy.sh from Terraform outputs.
+cluster_name:                "{{ name_prefix }}"
+chatwoot_namespace:          "chatwoot"
+chatwoot_secret_name_in_aws: "{{ name_prefix }}/chatwoot"
+chatwoot_k8s_secret:         "chatwoot-env"
+
+# IRSA role ARNs (passed in via extra-vars).
+irsa_alb_controller_role_arn:     ""
+irsa_cluster_autoscaler_role_arn: ""
+irsa_external_secrets_role_arn:   ""
+irsa_chatwoot_role_arn:           ""
+
+# Data infra (passed in via extra-vars).
+acm_certificate_arn: ""
+s3_bucket_name:      ""
+
+# Helm chart pin — bump deliberately, never auto-track.
+chatwoot_chart_repo:    "https://chatwoot.github.io/charts"
+chatwoot_chart_version: "v2.18.0"
+
+# Replica counts — minimum 2 for HA per CLAUDE.md §7.
+web_replicas:     2
+sidekiq_replicas: 2
+
+# Pinned add-on versions.
+alb_controller_chart_version: "1.8.2"
+cluster_autoscaler_chart_version: "9.37.0"
+external_secrets_chart_version:   "0.10.4"
+metrics_server_chart_version:     "3.12.1"
+
+# Operator-injectable feature flags via .env (empty = OFF).
+optional_env:
+  SENTRY_DSN:              "{{ lookup('env','SENTRY_DSN')              | default('', true) }}"
+  DATADOG_API_KEY:         "{{ lookup('env','DATADOG_API_KEY')         | default('', true) }}"
+  SCOUT_KEY:               "{{ lookup('env','SCOUT_KEY')               | default('', true) }}"
+  MAXMIND_LICENSE_KEY:     "{{ lookup('env','MAXMIND_LICENSE_KEY')     | default('', true) }}"
+  ENABLE_RACK_ATTACK:      "{{ lookup('env','ENABLE_RACK_ATTACK')      | default('', true) }}"
+  STRIPE_SECRET_KEY:       "{{ lookup('env','STRIPE_SECRET_KEY')       | default('', true) }}"
+  OPENAI_API_KEY:          "{{ lookup('env','OPENAI_API_KEY')          | default('', true) }}"
+  KEYCLOAK_OIDC_ISSUER:    "{{ lookup('env','KEYCLOAK_OIDC_ISSUER')    | default('', true) }}"
