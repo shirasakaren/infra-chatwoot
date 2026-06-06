@@ -239,13 +239,13 @@ Computed from the auto-selected `/16` (default `10.42.0.0/16`, shifted to the ne
 ```mermaid
 flowchart TD
     F[("Failure")]:::bad
-    F --> A1[AZ-1a outage] --> R1[Web + sidekiq replicas in AZ-1b<br/>continue; topology-spread<br/>guarantees ≥1 per AZ]:::ok
-    F --> A2[NAT-a fails] --> R2[Private AZ-1b egress unaffected<br/>NAT-b remains up]:::ok
-    F --> A3[EKS node dies] --> R3[cluster-autoscaler launches<br/>replacement in same AZ;<br/>HPA holds capacity in the meantime]:::ok
-    F --> A4[RDS primary fails] --> R4[Multi-AZ promotes standby<br/>~60-120s; sidekiq retries idempotent jobs]:::ok
-    F --> A5[Redis primary fails] --> R5[Automatic failover promotes<br/>replica ~60s]:::ok
-    F --> A6[Pod crashes] --> R6[K8s restarts container<br/>PDB ensures ≥1 always Ready]:::ok
-    F --> A7[Cloudflare PoP outage] --> R7[Anycast fails over to nearest PoP<br/>(transparent to client)]:::ok
+    F --> A1["AZ-1a outage"] --> R1["Web + sidekiq replicas in AZ-1b<br/>continue; topology-spread<br/>guarantees ≥1 per AZ"]:::ok
+    F --> A2["NAT-a fails"] --> R2["Private AZ-1b egress unaffected<br/>NAT-b remains up"]:::ok
+    F --> A3["EKS node dies"] --> R3["cluster-autoscaler launches<br/>replacement in same AZ;<br/>HPA holds capacity in the meantime"]:::ok
+    F --> A4["RDS primary fails"] --> R4["Multi-AZ promotes standby<br/>~60-120s; sidekiq retries idempotent jobs"]:::ok
+    F --> A5["Redis primary fails"] --> R5["Automatic failover promotes<br/>replica ~60s"]:::ok
+    F --> A6["Pod crashes"] --> R6["K8s restarts container<br/>PDB ensures ≥1 always Ready"]:::ok
+    F --> A7["Cloudflare PoP outage"] --> R7["Anycast fails over to nearest PoP<br/>transparent to client"]:::ok
 
     classDef bad fill:#fee2e2,stroke:#dc2626
     classDef ok fill:#dcfce7,stroke:#16a34a
@@ -557,7 +557,7 @@ The intended lifecycle is **deploy → demo → destroy**. The pricing reflects 
 
 ```mermaid
 pie showData
-    title  Monthly cost share if left running 24/7 (~US$420)
+    title Monthly cost share if left running 24/7 — approx US$420
     "EKS control plane"   : 73
     "Nodegroup (2 × t3.large)" : 122
     "NAT gateways (2)"    : 78
