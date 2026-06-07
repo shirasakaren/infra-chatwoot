@@ -82,9 +82,9 @@ variable "node_instance_type" {
   default     = "t3.large"
 }
 
-variable "node_min"     { type = number; default = 2 }
-variable "node_desired" { type = number; default = 2 }
-variable "node_max"     { type = number; default = 4 }
+variable "node_min"     { type = number; default = 3 }
+variable "node_desired" { type = number; default = 3 }
+variable "node_max"     { type = number; default = 6 }
 
 variable "node_root_volume_gb" {
   description = "Root EBS volume size on each node (GB)."
