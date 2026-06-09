@@ -33,7 +33,7 @@ resource "aws_eks_cluster" "main" {
       [for az in var.azs : aws_subnet.public[az].id],
       [for az in var.azs : aws_subnet.private[az].id],
     )
-    endpoint_public_access  = true
+    endpoint_public_access  = false
     endpoint_private_access = true
   }
 
