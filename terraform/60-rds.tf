@@ -69,7 +69,7 @@ resource "aws_db_instance" "main" {
   vpc_security_group_ids = [aws_security_group.rds.id]
   parameter_group_name   = aws_db_parameter_group.pg16.name
 
-  backup_retention_period   = 14
+  backup_retention_period   = 7
   backup_window             = "16:00-17:00" # UTC; off-hours for ap-southeast-1
   maintenance_window        = "Sun:18:00-Sun:19:00"
   copy_tags_to_snapshot     = true
