@@ -53,7 +53,7 @@ resource "aws_elasticache_replication_group" "redis" {
   auth_token                 = random_password.redis_auth.result
   auth_token_update_strategy = "ROTATE"
 
-  snapshot_retention_limit = 3
+  snapshot_retention_limit = 7
   snapshot_window          = "16:00-17:00"
   maintenance_window       = "sun:18:00-sun:19:00"
 
