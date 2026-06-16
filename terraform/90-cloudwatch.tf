@@ -4,7 +4,7 @@
 
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/aws/eks/${var.name_prefix}/application"
-  retention_in_days = 14
+  retention_in_days = 30
 
   tags = merge(local.common_tags, {
     Component = "fluent-bit"
