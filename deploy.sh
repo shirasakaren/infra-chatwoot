@@ -220,7 +220,7 @@ aws eks update-kubeconfig --region "${AWS_REGION}" --name "${CLUSTER_NAME}" --al
 for _ in $(seq 1 30); do
   READY="$(kubectl get nodes --no-headers 2>/dev/null | awk '$2=="Ready"' | wc -l | tr -d ' ')"
   [[ "${READY:-0}" -ge 2 ]] && break
-  sleep 20
+  sleep 10
 done
 [[ "${READY:-0}" -ge 2 ]] || die "Phase 2 gate FAIL: only ${READY:-0} nodes Ready (need >=2)"
 say "nodes Ready: ${READY}"
