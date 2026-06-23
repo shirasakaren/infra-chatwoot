@@ -217,7 +217,7 @@ say "Updating kubeconfig…"
 aws eks update-kubeconfig --region "${AWS_REGION}" --name "${CLUSTER_NAME}" --alias "${CLUSTER_NAME}" >/dev/null
 
 # Wait up to 5 min for nodes to register
-for _ in $(seq 1 45); do
+for _ in $(seq 1 30); do
   READY="$(kubectl get nodes --no-headers 2>/dev/null | awk '$2=="Ready"' | wc -l | tr -d ' ')"
   [[ "${READY:-0}" -ge 2 ]] && break
   sleep 10
