@@ -55,7 +55,7 @@ for IID in $NODE_IIDS; do
     --query 'Command.CommandId' --output text 2>/dev/null || true)"
   [[ -z "$CMD_ID" ]] && { ANY_BAD=1; continue; }
   for _ in $(seq 1 12); do
-    sleep 4
+    sleep 2
     S="$(aws ssm get-command-invocation --region "$REGION" --command-id "$CMD_ID" --instance-id "$IID" \
       --query 'Status' --output text 2>/dev/null || echo Pending)"
     [[ "$S" == "Success" || "$S" == "Failed" ]] && break
