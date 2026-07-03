@@ -8,7 +8,7 @@ resource "aws_acm_certificate" "app" {
   validation_method = "DNS"
 
   # Add www if you ever decide to alias it; we keep it strict for now.
-  subject_alternative_names = ["www.${var.domain}"]
+  subject_alternative_names = []
 
   tags = merge(local.common_tags, {
     Name = "${var.name_prefix}-${var.domain}"
