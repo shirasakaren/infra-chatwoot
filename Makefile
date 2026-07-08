@@ -1,10 +1,11 @@
 # Makefile, because sometimes you don't want to remember every flag.
 # honestly this is 90% muscle memory shortcuts. do NOT @ me about make being old.
+# (verify target added because i kept forgetting ./scripts/verify.sh existed)
 
-.PHONY: help fmt plan apply destroy
+.PHONY: help fmt plan apply destroy verify
 
 help:
-	@echo "targets: fmt plan apply destroy"
+	@echo "targets: fmt plan apply destroy verify"
 
 fmt:
 	terraform -chdir=terraform fmt -recursive
@@ -17,3 +18,6 @@ apply:
 
 destroy:
 	./destroy.sh
+
+verify:
+	./scripts/verify.sh
