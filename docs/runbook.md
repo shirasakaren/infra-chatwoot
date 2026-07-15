@@ -19,3 +19,11 @@ the README wins. These notes are vibes, the README is law.
 2. Restore it: `aws rds restore-db-instance-from-db-snapshot --db-instance-identifier cwta-pg-restored --db-snapshot-identifier <snap-id> --db-subnet-group-name cwta-rds`
 3. Point a fresh `.env` at the restored instance and redeploy.
 4. Pat yourself on the back. Restores are the only fun part of databases.
+
+## Failover drills
+
+- RDS: `aws rds reboot-db-instance --db-instance-identifier cwta-pg --force-failover`
+  and watch the standby take over. expect 60-120s of pouting from Sidekiq.
+- Redis: `aws elasticache test-failover --replication-group-id cwta-redis --node-group-id 0001`
+  then check the app still queues jobs. it should. if it doesn't, we have a
+  much longer conversation ahead of us.
