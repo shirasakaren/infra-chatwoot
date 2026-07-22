@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# deploy.sh — single entrypoint for the Chatwoot-TA deployment.
-# Phase-by-phase per CLAUDE.md §6. Phase 0 is implemented here; later phases
-# will be appended as they land. Idempotent and safe to re-run.
+# deploy.sh aka the button that makes everything happen. or explode.
+# this script started as "phase 0 only lol" and then the phases just kept
+# showing up like uninvited guests at a group project.
+# it's idempotent-ish. re-running is fine. probably. we don't ask questions.
 
 set -euo pipefail
 
@@ -14,12 +15,12 @@ say() { printf "  %s\n" "$*"; }
 die() { printf "${RED}ERROR:${CLR} %s\n" "$*" >&2; exit 1; }
 
 # -----------------------------------------------------------------------------
-# 0. Pre-flight
+# 0. pre-flight, aka "is this laptop even allowed to do this"
 # -----------------------------------------------------------------------------
 hdr "Phase 0 — pre-flight"
 "$ROOT/scripts/preflight.sh"
 
-# Load .env after preflight has validated it
+# grab the .env like it owes us money
 # shellcheck disable=SC1091
 set -a; . "$ROOT/.env"; set +a
 export TF_VAR_owner="${OWNER}"
@@ -39,11 +40,12 @@ export TF_VAR_github_repo="${GITHUB_REPO:-}"
 [[ -n "${RDS_MULTI_AZ:-}" ]]        && export TF_VAR_rds_multi_az="$RDS_MULTI_AZ"
 [[ -n "${REDIS_NODE_TYPE:-}" ]]     && export TF_VAR_redis_node_type="$REDIS_NODE_TYPE"
 
-# Provider auth — Cloudflare token via env so it never lands in tfstate/tfvars
+# cloudflare token rides along as an env var so it never leaks into tfstate.
+# tfstate is basically a gossip column, we do not feed it secrets.
 export CLOUDFLARE_API_TOKEN
 
 # -----------------------------------------------------------------------------
-# 1. Bootstrap state backend (local-state Terraform)
+# 1. bootstrap the state backend (the little terraform that could)
 # -----------------------------------------------------------------------------
 hdr "Phase 0 — bootstrap remote state"
 pushd "$ROOT/bootstrap" >/dev/null
@@ -59,7 +61,7 @@ say "state bucket: ${STATE_BUCKET}"
 say "lock table:   ${LOCK_TABLE}"
 
 # -----------------------------------------------------------------------------
-# 2. Initialize the main stack against the remote backend
+# 2. point the main stack at the state bucket we just made. bucket-ception.
 # -----------------------------------------------------------------------------
 hdr "Phase 0 — terraform init (S3 backend)"
 pushd "$ROOT/terraform" >/dev/null
@@ -70,7 +72,8 @@ terraform init -input=false -reconfigure \
   -backend-config="key=chatwoot-ta/terraform.tfstate"
 
 # -----------------------------------------------------------------------------
-# 3. Discovery + Phase 0 plan (no resources besides discovery written yet)
+# 3. discovery + phase 0 plan. nothing billable yet, we're just looking.
+#    like a raccoon in a server room. respectful, but nosy.
 # -----------------------------------------------------------------------------
 hdr "Phase 0 — discovery + plan"
 terraform plan -input=false -out=tfplan.phase0
@@ -81,7 +84,7 @@ say "discovery written: terraform/discovery/do-not-touch.json"
 SELECTED_CIDR="$(terraform output -raw selected_vpc_cidr)"
 say "selected VPC CIDR: ${SELECTED_CIDR}"
 
-# Pretty-print the do-not-touch summary
+# pretty-print the do-not-touch inventory so the operator can actually read it
 hdr "Phase 0 — DO-NOT-TOUCH inventory"
 jq '{
   aws: .aws,
@@ -97,7 +100,8 @@ jq '{
 popd >/dev/null
 
 # -----------------------------------------------------------------------------
-# 4. Approval gate
+# 4. the approval gate. the "are you SURE sure" screen. everything past this
+#    point costs real money and amazon does not do refunds. it does do emails.
 # -----------------------------------------------------------------------------
 hdr "Phase 0 — APPROVAL GATE"
 cat <<EOF
@@ -129,7 +133,7 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# 5. Main stack — Phase 1+ apply (network now; data/platform/edge as phases land)
+# 5. the big apply. this is where the credit card starts sweating.
 # -----------------------------------------------------------------------------
 hdr "Phase 1+ — terraform apply (full stack)"
 pushd "$ROOT/terraform" >/dev/null
@@ -137,7 +141,7 @@ terraform apply -input=false -auto-approve
 popd >/dev/null
 
 # -----------------------------------------------------------------------------
-# 6. Phase 1 verification — assert network shape against discovery + outputs
+# 6. phase 1 gate: poke the network and make sure it actually exists
 # -----------------------------------------------------------------------------
 hdr "Phase 1 — network gate"
 pushd "$ROOT/terraform" >/dev/null
@@ -159,21 +163,21 @@ say "private subnets:   $(echo "$PRV_SUBNETS_JSON" | jq -c)"
 say "database subnets:  $(echo "$DB_SUBNETS_JSON"  | jq -c)"
 say "NAT gateways:      $(echo "$NAT_IDS_JSON"     | jq -c)"
 
-# Each subnet group should have exactly 2 entries (one per AZ).
+# each subnet group owes us exactly 2 entries. one per AZ. no excuses.
 for label in "public:$PUB_SUBNETS_JSON" "private:$PRV_SUBNETS_JSON" "database:$DB_SUBNETS_JSON" "nat:$NAT_IDS_JSON"; do
   name="${label%%:*}"; json="${label#*:}"
   count="$(echo "$json" | jq 'length')"
   [[ "$count" -eq 2 ]] || die "Phase 1 gate FAIL: expected 2 ${name}, found ${count}"
 done
 
-# Each NAT GW must be 'available' and live in a distinct AZ.
+# both NAT gateways better be 'available' and spread across AZs, or we riot.
 NAT_STATUS_AZ="$(aws ec2 describe-nat-gateways --region "${AWS_REGION}" \
   --nat-gateway-ids $(echo "$NAT_IDS_JSON" | jq -r '.[]') \
   --query 'NatGateways[].{state:State,az:SubnetId}' --output json 2>/dev/null || echo '[]')"
 NAT_AVAIL="$(echo "$NAT_STATUS_AZ" | jq '[.[] | select(.state=="available")] | length')"
 [[ "$NAT_AVAIL" -eq 2 ]] || die "Phase 1 gate FAIL: not all 2 NAT GWs are 'available' (got ${NAT_AVAIL})."
 
-# Discovery diff: confirm no pre-existing VPC was modified.
+# make sure the shiny new VPC didn't sneak into the do-not-touch list.
 EXISTING_VPC_IDS_JSON="$(jq '.existing.vpcs | keys' "$ROOT/terraform/discovery/do-not-touch.json")"
 if echo "$EXISTING_VPC_IDS_JSON" | jq -e --arg v "$VPC_ID" 'index($v) != null' >/dev/null; then
   die "Phase 1 gate FAIL: new VPC ID matches a pre-existing VPC — guardrail tripped."
@@ -182,7 +186,7 @@ fi
 printf "${GRN}PHASE 1 — PASS${CLR}  (VPC + 2 AZ subnets + 2 NAT GWs healthy; no pre-existing resource modified)\n"
 
 # -----------------------------------------------------------------------------
-# 7. Phase 2 verification — EKS, nodes, LVM-ready disk, ECR, S3, IAM
+# 7. phase 2 gate: eks, nodes, the mystery 10G disk, ecr, s3, iam
 # -----------------------------------------------------------------------------
 hdr "Phase 2 — platform gate"
 pushd "$ROOT/terraform" >/dev/null
@@ -216,7 +220,8 @@ NG_STATUS="$(aws eks describe-nodegroup --region "${AWS_REGION}" \
 say "Updating kubeconfig…"
 aws eks update-kubeconfig --region "${AWS_REGION}" --name "${CLUSTER_NAME}" --alias "${CLUSTER_NAME}" >/dev/null
 
-# Wait up to 5 min for nodes to register
+# wait up to 5 min for nodes to show up. eks nodes are like cats: they come
+# when they want. we just sit here pretending we're not checking every 10s.
 for _ in $(seq 1 30); do
   READY="$(kubectl get nodes --no-headers 2>/dev/null | awk '$2=="Ready"' | wc -l | tr -d ' ')"
   [[ "${READY:-0}" -ge 2 ]] && break
@@ -225,8 +230,8 @@ done
 [[ "${READY:-0}" -ge 2 ]] || die "Phase 2 gate FAIL: only ${READY:-0} nodes Ready (need >=2)"
 say "nodes Ready: ${READY}"
 
-# Inspect block devices — every node must expose a 10G unformatted secondary
-# device that Ansible will turn into vg_data/lv_data in Phase 5.
+# every node needs a naked 10G disk just sitting there, waiting for ansible
+# to come along and make it a proper LVM citizen. peak "it's not you, it's me".
 say "Checking secondary EBS visibility on each node via SSM…"
 NODE_IIDS="$(aws ec2 describe-instances --region "${AWS_REGION}" \
   --filters "Name=tag:eks:cluster-name,Values=${CLUSTER_NAME}" \
@@ -237,7 +242,7 @@ for IID in $NODE_IIDS; do
     --document-name "AWS-RunShellScript" --instance-ids "$IID" \
     --parameters 'commands=["lsblk -bno NAME,SIZE,FSTYPE,MOUNTPOINT | sort"]' \
     --query 'Command.CommandId' --output text)"
-  # Poll briefly
+  # poll like it's a group chat and we sent something embarrassing
   for _ in $(seq 1 12); do
     sleep 5
     STATUS="$(aws ssm get-command-invocation --region "${AWS_REGION}" \
@@ -259,7 +264,8 @@ done
 printf "${GRN}PHASE 2 — PASS${CLR}  (EKS ACTIVE; ${READY} nodes Ready; LVM-ready disk on every node; ECR+S3+IRSA wired)\n"
 
 # -----------------------------------------------------------------------------
-# 8. Phase 3 verification — RDS Multi-AZ + Redis HA + Secrets Manager
+# 8. phase 3 gate: rds, redis, and the secret that lives in a vault like a
+#    celebrity's phone number
 # -----------------------------------------------------------------------------
 hdr "Phase 3 — data gate"
 pushd "$ROOT/terraform" >/dev/null
@@ -271,7 +277,7 @@ popd >/dev/null
 [[ -n "$RDS_ID"      ]] || die "Phase 3 gate FAIL: missing rds_instance_id"
 [[ -n "$SECRET_NAME" ]] || die "Phase 3 gate FAIL: missing chatwoot_secret_name"
 
-# RDS health + Multi-AZ
+# is the database alive AND did it bring a standby friend along
 RDS_STATE_AZ="$(aws rds describe-db-instances --region "$AWS_REGION" \
   --db-instance-identifier "$RDS_ID" \
   --query 'DBInstances[0].[DBInstanceStatus,MultiAZ]' --output text)"
@@ -281,7 +287,7 @@ RDS_MAZ="$(echo "$RDS_STATE_AZ" | awk '{print $2}')"
 [[ "$RDS_MAZ" == "True" || "$RDS_MAZ" == "true" ]] || die "Phase 3 gate FAIL: RDS Multi-AZ=$RDS_MAZ"
 say "RDS: $RDS_ID  state=$RDS_STATE  multi_az=$RDS_MAZ"
 
-# Redis replication group: 2 nodes, automatic failover enabled, available.
+# redis better be HA because losing the queue mid-demo is how you get booed.
 REDIS_INFO="$(aws elasticache describe-replication-groups --region "$AWS_REGION" \
   --replication-group-id "$REDIS_RG" \
   --query 'ReplicationGroups[0].[Status,AutomaticFailover,length(MemberClusters)]' --output text)"
@@ -293,20 +299,21 @@ R_MEMBERS="$(echo "$REDIS_INFO" | awk '{print $3}')"
 [[ "${R_MEMBERS:-0}" -ge 2 ]]      || die "Phase 3 gate FAIL: Redis member count=$R_MEMBERS"
 say "Redis: $REDIS_RG  state=$R_STATE  af=$R_AF  members=$R_MEMBERS"
 
-# Secrets Manager container exists.
+# the secret container exists. it's empty and sad until load-secrets feeds it.
 aws secretsmanager describe-secret --region "$AWS_REGION" --secret-id "$SECRET_NAME" \
   --query 'Name' --output text >/dev/null \
   || die "Phase 3 gate FAIL: chatwoot secret $SECRET_NAME not found"
 say "Secrets Manager: $SECRET_NAME"
 
-# Load app secrets (.env + TF outputs + managed RDS password → Secrets Manager).
+# stuff every app secret into Secrets Manager. finally, some privacy.
 hdr "Phase 3 — loading Chatwoot app secrets into Secrets Manager"
 "$ROOT/scripts/load-secrets.sh"
 
 printf "${GRN}PHASE 3 — PASS${CLR}  (RDS Multi-AZ available; Redis HA with auto-failover; secrets loaded)\n"
 
 # -----------------------------------------------------------------------------
-# 9. Phase 4 verification — ACM cert ISSUED, Cloudflare records, SES verified
+# 9. phase 4 gate: acm cert, cloudflare, ses. the "is the internet pointed
+#    at us yet" chapter.
 # -----------------------------------------------------------------------------
 hdr "Phase 4 — edge gate"
 pushd "$ROOT/terraform" >/dev/null
@@ -333,14 +340,16 @@ fi
 printf "${GRN}PHASE 4 — PASS${CLR}  (ACM ISSUED; Cloudflare records present; SES domain configured)\n"
 
 # -----------------------------------------------------------------------------
-# 10. Phase 5 — Ansible (LVM, cluster add-ons, ESO wiring, Chatwoot Helm)
+# 10. phase 5: ansible's time to shine. lvm, addons, secrets, the whole
+#     support group gets installed here.
 # -----------------------------------------------------------------------------
 hdr "Phase 5 — Ansible: install collections"
 ANSIBLE_DIR="$ROOT/ansible"
 export ANSIBLE_CONFIG="$ANSIBLE_DIR/ansible.cfg"
 ansible-galaxy collection install -r "$ANSIBLE_DIR/requirements.yml" >/dev/null
 
-# Gather TF outputs once and pass as extra-vars so playbooks don't shell out.
+# collect terraform outputs ONCE into a json file so every playbook doesn't
+# have to run terraform output like it's going out of style.
 hdr "Phase 5 — collect Terraform outputs for Ansible"
 pushd "$ROOT/terraform" >/dev/null
 TF_VARS_FILE="$(mktemp -t chatwoot-tfvars.XXXXXX.json)"
@@ -396,10 +405,10 @@ hdr "Phase 5 — 30-chatwoot (Helm install + ALB DNS wiring)"
 ansible-playbook "$ANSIBLE_DIR/playbooks/30-chatwoot.yml" \
   --extra-vars "$EXTRA"
 
-# Phase 5 gate
+# phase 5 gate: the moment of truth. did lvm survive contact with reality
 hdr "Phase 5 — Chatwoot core gate"
 
-# LVM mounted on every worker
+# /data mounted via LVM on every worker or we go home sad
 NODE_IIDS="$(aws ec2 describe-instances --region "${AWS_REGION}" \
   --filters "Name=tag:eks:cluster-name,Values=${CLUSTER_NAME}" \
             "Name=instance-state-name,Values=running" \
@@ -424,13 +433,13 @@ for IID in $NODE_IIDS; do
 done
 say "LVM /data mounted on all $(echo "$NODE_IIDS" | wc -w | tr -d ' ') worker(s)"
 
-# ExternalSecret synced
+# ESO had one job: sync the secret. did it.
 ES_READY="$(kubectl -n chatwoot get externalsecret chatwoot-env \
   -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")"
 [[ "$ES_READY" == "True" ]] || die "Phase 5 gate FAIL: ExternalSecret chatwoot-env not Ready (status=$ES_READY)"
 say "ExternalSecret chatwoot-env: SecretSynced=True"
 
-# Web + sidekiq replicas
+# two web pods, two sidekiq pods, zero excuses
 WEB_READY="$(kubectl -n chatwoot get deploy -l app.kubernetes.io/component=web \
   -o jsonpath='{range .items[*]}{.status.readyReplicas}{"\n"}{end}' 2>/dev/null | awk '{s+=$1} END{print s+0}')"
 SK_READY="$(kubectl -n chatwoot get deploy -l app.kubernetes.io/component=sidekiq \
@@ -439,7 +448,7 @@ SK_READY="$(kubectl -n chatwoot get deploy -l app.kubernetes.io/component=sideki
 [[ "${SK_READY:-0}"  -ge 2 ]] || die "Phase 5 gate FAIL: sidekiq ready=${SK_READY:-0} (<2)"
 say "chatwoot web ready: ${WEB_READY} / sidekiq ready: ${SK_READY}"
 
-# Ingress reports an ALB hostname
+# the ingress owes us an ALB hostname. no hostname, no party.
 ALB_HOST="$(kubectl -n chatwoot get ingress -o jsonpath='{.items[0].status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
 [[ -n "$ALB_HOST" ]] || die "Phase 5 gate FAIL: ingress has no ALB hostname yet"
 say "ALB hostname: $ALB_HOST"
@@ -447,7 +456,8 @@ say "ALB hostname: $ALB_HOST"
 printf "${GRN}PHASE 5 — PASS${CLR}  (LVM on every worker; ESO synced; chatwoot web+sidekiq HA; ALB live)\n"
 
 # -----------------------------------------------------------------------------
-# 11. Phase 6 — Integrations (status only; wiring is .env-driven through ESO)
+# 11. phase 6: integrations. we don't install anything, we just gossip about
+#     which keys made it into the secret.
 # -----------------------------------------------------------------------------
 hdr "Phase 6 — integrations status"
 KEYS_LIVE_JSON="$(aws secretsmanager get-secret-value --region "$AWS_REGION" \
@@ -467,12 +477,13 @@ done
 printf "${GRN}PHASE 6 — PASS${CLR}  (env keys mapped; absent integrations cleanly disabled)\n"
 
 # -----------------------------------------------------------------------------
-# 12. Phase 7 — Observability (Fluent Bit + optional Datadog)
+# 12. phase 7: observability. fluent bit ships logs, datadog ships itself
+#     only if you bothered to give it a key.
 # -----------------------------------------------------------------------------
 hdr "Phase 7 — observability"
 ansible-playbook "$ANSIBLE_DIR/playbooks/40-observability.yml" --extra-vars "$EXTRA"
 
-# Log group exists and at least one stream is receiving events.
+# make sure the log group exists and has actual logs in it, not just vibes.
 LG="/aws/eks/${NAME_PREFIX}/application"
 aws logs describe-log-groups --region "$AWS_REGION" \
   --log-group-name-prefix "$LG" \
@@ -480,7 +491,7 @@ aws logs describe-log-groups --region "$AWS_REGION" \
   | grep -q "$LG" || die "Phase 7 gate FAIL: log group $LG missing"
 say "log group: $LG"
 
-# Datadog status
+# datadog: on or off, we check so the demo doesn't get awkward questions.
 if echo "$KEYS_LIVE_JSON" | jq -e 'index("DATADOG_API_KEY") != null' >/dev/null; then
   DD_READY="$(kubectl -n datadog get pods -l app=datadog -o jsonpath='{range .items[*]}{.status.containerStatuses[*].ready}{"\n"}{end}' 2>/dev/null | grep -c true || true)"
   say "Datadog agent pods Ready: ${DD_READY:-0}"
@@ -490,7 +501,8 @@ fi
 printf "${GRN}PHASE 7 — PASS${CLR}  (log shipping wired)\n"
 
 # -----------------------------------------------------------------------------
-# 13. Phase 8 — final E2E verification
+# 13. phase 8: the final boss. the acceptance table nobody asked for but
+#     everybody wants to see.
 # -----------------------------------------------------------------------------
 hdr "Phase 8 — final verification"
 "$ROOT/scripts/verify.sh"
