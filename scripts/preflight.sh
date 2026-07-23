@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# scripts/preflight.sh — Phase 0 pre-flight checks.
-# Verifies tools, .env, AWS + Cloudflare auth, and AWS quotas in ap-southeast-1.
-# Exits non-zero on any blocking failure.
+# preflight.sh aka the vibe check before the party.
+# makes sure your tools exist, your .env isn't a lie, aws + cloudflare still
+# love you, and the account has enough quota for this whole circus.
+# exits non-zero on anything actually broken. warnings are just gossip.
 
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
-# helpers
+# helpers. tiny and dramatic, like all good helpers.
 # -----------------------------------------------------------------------------
 RED=$'\033[0;31m'; GRN=$'\033[0;32m'; YLW=$'\033[1;33m'; BLU=$'\033[0;34m'; CLR=$'\033[0m'
 PASS=0; FAIL=0; WARN=0
@@ -18,7 +19,8 @@ hdr()   { printf "\n${BLU}==> %s${CLR}\n" "$*"; }
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# Minimum versions (semver-ish, integer compare per segment)
+# minimum versions. yes the compare logic below is over-engineered for a
+# school project. no, i will not apologize. version numbers are liars.
 declare -A MINVER=(
   [terraform]="1.6.0"
   [ansible]="2.15.0"
@@ -29,7 +31,7 @@ declare -A MINVER=(
 )
 
 verlte() {
-  # returns 0 if $1 <= $2 (numeric, dot-separated, leading non-digits stripped)
+  # returns 0 if $1 <= $2. sorts versions the way god intended: with sort -V.
   local a b
   a="$(echo "$1" | tr -dc '0-9.')"
   b="$(echo "$2" | tr -dc '0-9.')"
@@ -50,7 +52,7 @@ bin_version() {
 }
 
 # -----------------------------------------------------------------------------
-# 1. Required CLIs + versions
+# 1. required CLIs. every missing tool is a personal insult.
 # -----------------------------------------------------------------------------
 hdr "Required CLI tools"
 for tool in terraform ansible kubectl helm aws jq; do
@@ -70,7 +72,8 @@ for tool in terraform ansible kubectl helm aws jq; do
   fi
 done
 
-# session-manager-plugin (no semver required; presence is enough)
+# session-manager-plugin. no version check, we just need it to exist so SSM
+# doesn't pretend it can't reach the nodes.
 if command -v session-manager-plugin >/dev/null 2>&1; then
   ok "session-manager-plugin installed"
 else
@@ -78,7 +81,7 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# 2. .env file + required core keys
+# 2. .env exists and every key we can't live without is filled in
 # -----------------------------------------------------------------------------
 hdr ".env / configuration"
 if [[ ! -f "$ROOT/.env" ]]; then
@@ -97,19 +100,20 @@ else
     fi
   done
 
-  # Region sanity
+  # region sanity: this whole repo assumes ap-southeast-1. change it and
+  # you're on your own, i'm not debugging another region's quirks.
   if [[ "${AWS_REGION:-}" != "ap-southeast-1" ]]; then
-    warn "AWS_REGION=${AWS_REGION:-} — CLAUDE.md is locked to ap-southeast-1; override at your own risk"
+    warn "AWS_REGION=${AWS_REGION:-} — this stack is built for ap-southeast-1; override at your own risk"
   fi
 
-  # NAME_PREFIX shape
+  # NAME_PREFIX shape. lowercase, short, no funny business. like a username.
   if [[ -n "${NAME_PREFIX:-}" && ! "$NAME_PREFIX" =~ ^[a-z][a-z0-9-]{2,15}$ ]]; then
     bad "NAME_PREFIX must be lowercase alphanumeric/dash, 3-16 chars, start with a letter (got: $NAME_PREFIX)"
   fi
 fi
 
 # -----------------------------------------------------------------------------
-# 3. AWS auth
+# 3. aws identity. who are we even, according to amazon.
 # -----------------------------------------------------------------------------
 hdr "AWS identity"
 if [[ -n "${AWS_PROFILE:-}" ]]; then export AWS_PROFILE; fi
@@ -123,7 +127,7 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# 4. Cloudflare auth
+# 4. cloudflare token. does cloudflare even know this token exists.
 # -----------------------------------------------------------------------------
 hdr "Cloudflare API token"
 if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
@@ -133,7 +137,7 @@ if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
   CF_OK="$(echo "$CF_RESP" | jq -r '.success // false')"
   if [[ "$CF_OK" == "true" ]]; then
     ok "Cloudflare token valid"
-    # Confirm zone is visible to this token
+    # make sure the labmgm.org zone actually shows up for this token
     CF_ZONE_RESP="$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=${CLOUDFLARE_ZONE}" \
       -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" || true)"
     CF_ZONE_COUNT="$(echo "$CF_ZONE_RESP" | jq -r '.result | length // 0')"
@@ -150,7 +154,8 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# 5. AWS Service Quotas in target region
+# 5. service quotas. because aws WILL let you start and then ghost you
+#    halfway through when you hit a limit. we check first like adults.
 # -----------------------------------------------------------------------------
 hdr "AWS Service Quotas (region=${AWS_REGION:-ap-southeast-1})"
 REGION="${AWS_REGION:-ap-southeast-1}"
@@ -163,7 +168,7 @@ quota_value() {
     --query 'Quota.Value' --output text 2>/dev/null || true
 }
 
-# EIPs (NAT GWs need 2)
+# elastic IPs. two NAT gateways want two EIPs, minimum. they're needy.
 EIP_Q="$(quota_value ec2 L-0263D0A3)"
 if [[ -n "$EIP_Q" && "${EIP_Q%.*}" -ge 5 ]]; then
   ok "Elastic IPs per region: ${EIP_Q%.*} (need >= 5)"
@@ -171,7 +176,7 @@ else
   warn "Elastic IPs quota: ${EIP_Q:-unknown} (need >= 5; raise via Service Quotas if low)"
 fi
 
-# Standard On-Demand vCPUs (covers t3/m5 family)
+# standard on-demand vCPUs. t3 nodes are cheap but they still count.
 VCPU_Q="$(quota_value ec2 L-1216C47A)"
 if [[ -n "$VCPU_Q" && "${VCPU_Q%.*}" -ge 16 ]]; then
   ok "Standard on-demand vCPUs: ${VCPU_Q%.*} (need >= 16)"
@@ -179,7 +184,7 @@ else
   warn "Standard on-demand vCPU quota: ${VCPU_Q:-unknown} (need >= 16)"
 fi
 
-# EKS clusters per region
+# EKS clusters per region. we only want one, but amazon keeps score.
 EKS_Q="$(quota_value eks L-1194D53C)"
 if [[ -n "$EKS_Q" && "${EKS_Q%.*}" -ge 1 ]]; then
   ok "EKS clusters per region: ${EKS_Q%.*}"
@@ -188,7 +193,7 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# Summary
+# summary. the report card.
 # -----------------------------------------------------------------------------
 hdr "Preflight summary"
 printf "  passed: %d  warned: %d  failed: %d\n" "$PASS" "$WARN" "$FAIL"

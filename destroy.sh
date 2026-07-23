@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# destroy.sh — safe, state-scoped teardown of Chatwoot-TA.
+# destroy.sh aka the "we're done here" script. pulls the plug with manners.
 #
-# Order (matters):
-#   1. Typed confirmation of the project name.
-#   2. Delete Kubernetes ingresses so the ALB controller cleanly removes the
-#      ALB *before* TF tries to destroy the VPC/SGs/ENIs.
-#   3. helm uninstall chatwoot (drops Service/Deployment/HPA/PDB).
-#   4. Remove the Ansible-managed Cloudflare app DNS record (Terraform doesn't
-#      own it).
-#   5. Final RDS snapshot (unless --skip-snapshot).
-#   6. terraform destroy on the main stack (state-scoped — only touches our
-#      resources).
-#   7. Optional --purge-state: empty + destroy the bootstrap S3 bucket and
-#      DynamoDB lock table.
+# order matters more than your group chat's unread messages:
+#   1. type the project name as a pinky promise you know what you're doing.
+#   2. delete k8s ingresses first so the ALB controller cleans up its own ALB
+#      BEFORE terraform rips the VPC out from under it. learned this one the
+#      hard way. terraform destroy is not a graceful host.
+#   3. helm uninstall chatwoot (drops Service/Deployment/HPA/PDB like a bad habit).
+#   4. remove the cloudflare app record that ansible made. terraform doesn't
+#      know it exists, it's ansible's secret child.
+#   5. final RDS snapshot (unless you tell it to skip, which, don't).
+#   6. terraform destroy on the main stack. state-scoped, so it can only
+#      break what we built. probably.
+#   7. optional --purge-state: also vaporize the bootstrap bucket + lock table.
 
 set -euo pipefail
 
@@ -55,7 +55,7 @@ export TF_VAR_github_owner="${GITHUB_OWNER:-}"
 export TF_VAR_github_repo="${GITHUB_REPO:-}"
 
 # -----------------------------------------------------------------------------
-# 1. Confirmation
+# 1. confirmation. we ask nicely ONCE and then it's the point of no return.
 # -----------------------------------------------------------------------------
 hdr "Confirmation"
 printf "${YLW}This will DESTROY Chatwoot-TA (project=%s, region=%s).${CLR}\n" \
@@ -65,7 +65,7 @@ read -r CONFIRM
 [[ "$CONFIRM" == "${NAME_PREFIX}" ]] || die "Confirmation mismatch. Aborting."
 
 # -----------------------------------------------------------------------------
-# 2/3. Drain K8s-managed AWS resources first
+# 2/3. drain the k8s-managed stuff first. the ALB is clingy, we help it let go.
 # -----------------------------------------------------------------------------
 if command -v kubectl >/dev/null 2>&1; then
   if aws eks update-kubeconfig --region "${AWS_REGION}" --name "${NAME_PREFIX}" \
@@ -91,7 +91,7 @@ if command -v kubectl >/dev/null 2>&1; then
 fi
 
 # -----------------------------------------------------------------------------
-# 4. Remove Ansible-managed Cloudflare app record
+# 4. remove the cloudflare record that ansible snuck in behind terraform's back
 # -----------------------------------------------------------------------------
 if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
   hdr "Removing Cloudflare app DNS record (Ansible-managed)"
@@ -116,7 +116,7 @@ if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 5/6. Final RDS snapshot + terraform destroy
+# 5/6. one last RDS snapshot (a digital goodbye kiss) + terraform destroy
 # -----------------------------------------------------------------------------
 if [[ -d "$ROOT/terraform/.terraform" ]]; then
   pushd "$ROOT/terraform" >/dev/null
@@ -144,7 +144,7 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# 7. Optional: purge bootstrap state backend
+# 7. optional: purge the bootstrap state backend. goblin mode only.
 # -----------------------------------------------------------------------------
 if [[ "$PURGE_STATE" -eq 1 ]]; then
   hdr "Purging bootstrap state backend"
