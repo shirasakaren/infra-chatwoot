@@ -1,30 +1,13 @@
 #!/usr/bin/env bash
 # scripts/load-secrets.sh
-# Builds the Chatwoot app-secrets JSON from .env + Terraform outputs +
-# AWS-managed RDS password, then writes it into Secrets Manager. Run AFTER
-# `terraform apply` and BEFORE the Ansible secrets/Helm playbooks. Idempotent.
+# takes .env + terraform outputs + the RDS password that AWS is hoarding,
+# smushes it all into one big JSON, and shoves it into Secrets Manager.
+# run AFTER terraform apply and BEFORE the ansible secrets/helm playbooks.
+# it's idempotent, so if you re-run it it just rewrites the same gossip.
 #
-# Inputs (env):
-#   .env (sourced by caller)            — operator-provided app config
-#   Terraform outputs (read here)       — endpoints, secret ARNs
-#
-# Output:
-#   Secrets Manager: ${NAME_PREFIX}/chatwoot
-#     {
-#       "POSTGRES_HOST": "...",
-#       "POSTGRES_PORT": "5432",
-#       "POSTGRES_DATABASE": "chatwoot",
-#       "POSTGRES_USERNAME": "chatwoot",
-#       "POSTGRES_PASSWORD": "<from AWS-managed master secret>",
-#       "REDIS_URL": "rediss://:<auth>@<endpoint>:6379",
-#       "S3_BUCKET_NAME": "...",
-#       "AWS_REGION": "...",
-#       "SECRET_KEY_BASE": "...",
-#       "SMTP_*": "...",
-#       "...optional integration keys (only if present in .env)..."
-#     }
-#
-# Values never appear in tfstate or git. They live only in Secrets Manager.
+# why the ceremony? because tfstate is basically a public diary and we don't
+# write passwords in diaries. the secret never touches state, never touches
+# git, never touches the floor. it lives in Secrets Manager and that's it.
 
 set -euo pipefail
 
@@ -60,7 +43,7 @@ TF_SES_PASS="$(terraform output -raw ses_smtp_password 2>/dev/null || true)"
 TF_SES_DOMAIN="$(terraform output -raw ses_domain 2>/dev/null || true)"
 popd >/dev/null
 
-# Prefer TF-generated SES SMTP creds; .env overrides only if explicitly set.
+# SES creds: trust terraform's generated ones unless .env explicitly fights us.
 SMTP_ADDRESS="${SMTP_ADDRESS:-$TF_SES_HOST}"
 SMTP_USERNAME="${SMTP_USERNAME:-$TF_SES_USER}"
 SMTP_PASSWORD="${SMTP_PASSWORD:-$TF_SES_PASS}"
@@ -76,20 +59,22 @@ REDIS_PAYLOAD="$(aws secretsmanager get-secret-value --region "$REGION" \
 REDIS_AUTH="$(echo "$REDIS_PAYLOAD" | jq -r .auth_token)"
 [[ -n "$REDIS_AUTH" && "$REDIS_AUTH" != "null" ]] || die "Could not read Redis auth token"
 
-# URL-encode the auth token for use inside REDIS_URL.
+# the redis token goes inside a URL, and URLs are picky about characters.
+# urls are the vegans of strings. we pre-chew the token for them.
 urlencode() {
   python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
 }
 REDIS_AUTH_ENC="$(urlencode "$REDIS_AUTH")"
 REDIS_URL="rediss://:${REDIS_AUTH_ENC}@${TF_REDIS_HOST}:${TF_REDIS_PORT}/0"
 
-# Auto-generate SECRET_KEY_BASE if blank.
+# no SECRET_KEY_BASE? fine, we'll roll one on the spot like we planned this.
 if [[ -z "${SECRET_KEY_BASE:-}" ]]; then
   SECRET_KEY_BASE="$(openssl rand -hex 64)"
   say "SECRET_KEY_BASE auto-generated."
 fi
 
-# Auto-generate VAPID keys if blank (Web Push).
+# VAPID keys for web push. node might not have web-push installed, in which
+# case we shrug and let the helm chart figure it out. delegation, baby.
 if [[ -z "${VAPID_PUBLIC_KEY:-}" || -z "${VAPID_PRIVATE_KEY:-}" ]]; then
   if command -v node >/dev/null 2>&1; then
     VAPID_JSON="$(node -e "const w=require('web-push');console.log(JSON.stringify(w.generateVAPIDKeys()))" 2>/dev/null || true)"
@@ -103,8 +88,8 @@ if [[ -z "${VAPID_PUBLIC_KEY:-}" || -z "${VAPID_PRIVATE_KEY:-}" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Build payload — only keys with non-empty values are included, so absent
-# optional integrations stay disabled (CLAUDE.md §4: "empty value = feature off").
+# build the payload. every blank key gets yeeted at the end, which is how
+# "empty value = feature off" actually works. no ghosts in the secret.
 # -----------------------------------------------------------------------------
 hdr "Composing secret payload"
 PAYLOAD="$(jq -n \
