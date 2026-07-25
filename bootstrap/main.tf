@@ -1,13 +1,14 @@
 # bootstrap/main.tf
-# One-shot Terraform (LOCAL state) that provisions the remote backend for the
-# main stack: an S3 state bucket and a DynamoDB lock table. Idempotent.
+# one-shot terraform (LOCAL state) that builds the remote backend for the
+# main stack: an S3 state bucket and a DynamoDB lock table. idempotent,
+# which is a fancy word for "run it twice, it won't cry".
 #
 # Run:
 #   cd bootstrap
 #   terraform init
 #   terraform apply -var "owner=<you>"
 #
-# Outputs (state_bucket, lock_table) are consumed by terraform/backend.tf.
+# The outputs (state_bucket, lock_table) feed terraform/backend.tf later.
 
 locals {
   state_bucket_name = "${var.name_prefix}-tfstate-${data.aws_caller_identity.current.account_id}-${var.region}"
@@ -36,7 +37,8 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 
 # -----------------------------------------------------------------------------
-# S3: versioned, encrypted, public-access blocked
+# S3: versioned, encrypted, public access blocked. the state bucket is a
+# diary with a padlock and a swear jar.
 # -----------------------------------------------------------------------------
 resource "aws_s3_bucket" "state" {
   bucket = local.state_bucket_name
@@ -77,7 +79,7 @@ resource "aws_s3_bucket_ownership_controls" "state" {
   }
 }
 
-# Deny non-TLS access
+# no TLS, no entry. this bucket has standards.
 resource "aws_s3_bucket_policy" "state_tls_only" {
   bucket = aws_s3_bucket.state.id
   policy = jsonencode({
@@ -100,7 +102,7 @@ resource "aws_s3_bucket_policy" "state_tls_only" {
 }
 
 # -----------------------------------------------------------------------------
-# DynamoDB: state locking
+# DynamoDB: the lock table. terraform's way of saying "one at a time please".
 # -----------------------------------------------------------------------------
 resource "aws_dynamodb_table" "lock" {
   name         = local.lock_table_name
