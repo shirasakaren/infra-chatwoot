@@ -1,9 +1,9 @@
-# Secrets / env
+# Secrets / env. .env stays out of git. i cannot stress this enough.
 .env
 .env.*
 !.env.example
 
-# Terraform
+# Terraform. local state, locks, plans, tfvars... all local clutter.
 .terraform/
 .terraform.lock.hcl
 *.tfstate
@@ -19,17 +19,17 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
-# Kubeconfig
+# Kubeconfig. this is basically a key to the kingdom.
 kubeconfig
 kubeconfig.*
 .kube/
 
-# Ansible
+# Ansible droppings
 *.retry
 .vault_pass
 ansible/inventory/*.cache
 
-# OS / editors
+# OS / editors. nobody needs your .DS_Store in the repo, apple.
 .DS_Store
 Thumbs.db
 .idea/
