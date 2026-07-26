@@ -1,7 +1,8 @@
 # 10-network.tf
-# Phase 1 — VPC, subnets (public/private/db across 2 AZs), IGW, 2 NAT GWs
-# (one per AZ for HA), per-AZ private route tables, and baseline security
-# groups. Purely additive; CIDR was picked in Phase 0 to avoid overlap.
+# Phase 1: VPC, subnets (public/private/db across 2 AZs), IGW, 2 NAT GWs
+# (one per AZ so a single AZ outage doesn't take the internet with it),
+# per-AZ private route tables, and the baseline security groups.
+# purely additive; the CIDR was picked in Phase 0 to avoid overlap.
 #
 # Subnet layout in a /16 (e.g. 10.42.0.0/16):
 #   public_a    10.42.0.0/20    cidrsubnet(vpc, 4, 0)
@@ -161,7 +162,7 @@ resource "aws_route_table_association" "public" {
 }
 
 # -----------------------------------------------------------------------------
-# Private route tables (one per AZ → its own NAT for AZ-local egress)
+# Private route tables (one per AZ with its own NAT for AZ-local egress)
 # -----------------------------------------------------------------------------
 resource "aws_route_table" "private" {
   for_each = local.subnet_az_index
@@ -186,8 +187,9 @@ resource "aws_route_table_association" "private" {
 }
 
 # -----------------------------------------------------------------------------
-# Database route tables — no default route. RDS/ElastiCache don't need
-# internet egress; this keeps the data tier strictly internal.
+# Database route tables: no default route. RDS/ElastiCache don't need
+# internet egress; this keeps the data tier strictly internal. the data
+# tier is an introvert and we respect that.
 # -----------------------------------------------------------------------------
 resource "aws_route_table" "database" {
   for_each = local.subnet_az_index
@@ -255,7 +257,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_all" {
   ip_protocol       = "-1"
 }
 
-# Node (worker) security group — additional rules layered on top of the
+# Node (worker) security group: additional rules layered on top of the
 # EKS-managed cluster SG. Created here so RDS/Redis SGs can reference it.
 resource "aws_security_group" "node" {
   name        = "${var.name_prefix}-node-extra"

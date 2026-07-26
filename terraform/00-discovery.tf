@@ -1,18 +1,20 @@
 # 00-discovery.tf
-# READ-ONLY inventory of pre-existing AWS resources in this shared account.
-# Phase 0 uses this to:
-#   1. Pick a non-overlapping VPC CIDR from var.vpc_cidr_candidates.
-#   2. Detect naming collisions (EKS cluster names, Route 53 zones).
-#   3. Write terraform/discovery/do-not-touch.json — the additive-only contract.
+# read-only snooping around the shared AWS account before we build anything.
+# phase 0 uses this to:
+#   1. pick a VPC CIDR that doesn't crash into anything already there.
+#   2. catch name collisions (EKS cluster names, Route 53 zones).
+#   3. write terraform/discovery/do-not-touch.json, the sacred "we added
+#      things but we never broke yours" contract.
 #
-# Nothing in this file creates billable resources or mutates anything.
+# nothing in this file creates anything billable or mutates anything.
+# it's a look-but-don't-touch zone. like a museum, but with ARNs.
 
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 data "aws_partition" "current" {}
 
 # -----------------------------------------------------------------------------
-# Existing VPCs (and their CIDRs)
+# Existing VPCs (and their CIDRs). we're politely asking who's already home.
 # -----------------------------------------------------------------------------
 data "aws_vpcs" "existing" {}
 
@@ -28,23 +30,24 @@ data "aws_eks_clusters" "existing" {}
 
 # -----------------------------------------------------------------------------
 # Existing Route 53 hosted zones (informational; Cloudflare is authoritative
-# for labmgm.org, but we still record any Route 53 zones in this account so
-# we never accidentally collide).
+# for labmgm.org, but we still write down any Route 53 zones in this account
+# so we never accidentally bodyslam one).
 # -----------------------------------------------------------------------------
 data "aws_route53_zones" "existing" {}
 
 # -----------------------------------------------------------------------------
-# Existing IAM entities (informational — used by 20-iam.tf to avoid name
-# collisions on users/groups/policies in Phase 2).
+# Existing IAM entities (informational, used by 20-iam.tf so we don't name
+# our users/groups/policies like someone else's kids).
 # -----------------------------------------------------------------------------
 data "aws_iam_account_alias" "current" {}
 
 # -----------------------------------------------------------------------------
 # CIDR overlap detection
 #
-# We compare candidate /16s against the first two octets of each existing CIDR.
-# This is a strict guardrail for the documented 10.4x.0.0/16 candidates: any
-# existing CIDR that shares the same /16 network is treated as overlapping.
+# we compare candidate /16s against the first two octets of every existing
+# CIDR. it's a strict guardrail for the documented 10.4x.0.0/16 candidates:
+# anything sharing the same /16 is treated as overlapping. no exceptions,
+# no "but it's only a little bit".
 # -----------------------------------------------------------------------------
 locals {
   existing_vpcs = {
@@ -83,7 +86,7 @@ locals {
     : "" # caught by check block below
   )
 
-  # Existing CIDRs that share a /16 label with ANY candidate — useful in the report.
+  # Existing CIDRs that share a /16 label with ANY candidate, useful in the report.
   overlapping_existing_cidrs = [
     for c in local.existing_cidrs_raw :
     c if contains(values(local.candidate_labels),
@@ -95,7 +98,8 @@ locals {
 }
 
 # -----------------------------------------------------------------------------
-# Hard checks — Terraform plan fails loudly with a clear message on collision.
+# Hard checks. terraform plan fails LOUDLY with a clear message on collision.
+# no silent shrugs in this file. if we crash, we crash with a readable error.
 # -----------------------------------------------------------------------------
 check "vpc_cidr_available" {
   assert {
@@ -123,14 +127,15 @@ check "eks_cluster_name_free" {
 
 # -----------------------------------------------------------------------------
 # Write the do-not-touch inventory to disk.
-# Consumed by destroy.sh as a sanity check before any mutation, and printed by
-# deploy.sh at the Phase 0 approval gate.
+# destroy.sh reads it as a sanity check before touching anything, and
+# deploy.sh prints it at the Phase 0 approval gate. it's the receipts.
 # -----------------------------------------------------------------------------
 resource "local_file" "do_not_touch" {
   filename        = "${path.module}/discovery/do-not-touch.json"
   file_permission = "0644"
 
-  # No timestamp here — would churn on every plan and break the "0 drift" gate.
+  # No timestamp here. a timestamp would churn on every plan and break the
+  # "0 drift" gate, and that gate is the one thing we refuse to negotiate.
   # The S3 state versioning of the parent stack tracks history if needed.
   content = jsonencode({
     aws = {
