@@ -1,11 +1,11 @@
 # 30-eks.tf
-# Phase 2 — EKS cluster, OIDC provider, custom launch template
+# Phase 2: EKS cluster, OIDC provider, custom launch template
 # (AL2023 + secondary EBS for LVM, SSM-enabled, IMDSv2 required), and
 # the managed node group that uses it.
 #
 # The secondary EBS volume is attached UNFORMATTED. Phase 5 (Ansible) sees
 # a ${var.node_data_volume_gb}-GB block device and runs:
-#   pvcreate → vgcreate vg_data → lvcreate lv_data → mkfs.xfs → mount /data
+#   pvcreate to vgcreate vg_data to lvcreate lv_data to mkfs.xfs to mount /data
 # (LVM rubric requirement).
 
 # -----------------------------------------------------------------------------
@@ -77,7 +77,7 @@ data "aws_ssm_parameter" "eks_ami" {
 # -----------------------------------------------------------------------------
 # Custom launch template
 #   - root volume on /dev/xvda (gp3)
-#   - secondary volume on /dev/xvdb (gp3, UNFORMATTED — Ansible owns it)
+#   - secondary volume on /dev/xvdb (gp3, UNFORMATTED: Ansible owns it)
 #   - IMDSv2 required, hop limit 2 (for IRSA pods)
 #   - No user_data: managed node groups inject bootstrap automatically
 # -----------------------------------------------------------------------------
@@ -115,7 +115,7 @@ resource "aws_launch_template" "nodes" {
     }
   }
 
-  # LVM data volume — left UNFORMATTED for Ansible to pvcreate/vgcreate.
+  # LVM data volume, left UNFORMATTED for Ansible to pvcreate/vgcreate.
   block_device_mappings {
     device_name = "/dev/xvdb"
     ebs {
@@ -174,7 +174,7 @@ resource "aws_eks_node_group" "main" {
     version = aws_launch_template.nodes.latest_version
   }
 
-  # ami_type / instance_types / disk_size are owned by the LT — don't set them.
+  # ami_type / instance_types / disk_size are owned by the LT, don't set them.
 
   labels = {
     "chatwoot-ta/role" = "general"
@@ -197,7 +197,7 @@ resource "aws_eks_node_group" "main" {
 }
 
 # -----------------------------------------------------------------------------
-# Core EKS add-ons (managed). We DO NOT pin VPC CNI custom config — defaults work.
+# Core EKS add-ons (managed). We DO NOT pin VPC CNI custom config; defaults work.
 # -----------------------------------------------------------------------------
 resource "aws_eks_addon" "vpc_cni" {
   cluster_name                = aws_eks_cluster.main.name

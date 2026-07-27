@@ -1,13 +1,13 @@
 # 20-iam.tf
-# Phase 2 — IAM:
-#   - "Manajemen User" rubric: IAM groups, attached policies, and a configurable
-#     map of IAM users (default seeds one demo operator).
+# Phase 2 IAM, aka the permissions maze:
+#   - "Manajemen User" rubric: IAM groups, attached policies, and a
+#     configurable map of IAM users (default seeds one demo operator).
 #   - Cluster + node-group IAM roles for EKS.
 #   - IRSA roles for cluster add-ons + Chatwoot S3 access (trust policies are
 #     wired to the OIDC provider declared in 30-eks.tf).
 
 # =============================================================================
-# Manajemen User — IAM users / groups / policies
+# Manajemen User: IAM users / groups / policies
 # =============================================================================
 
 variable "iam_users" {
@@ -179,7 +179,8 @@ resource "aws_iam_role_policy_attachment" "eks_node_managed" {
     "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
     "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
     "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
-    # SSM Agent access — Ansible reaches nodes via Session Manager (no SSH).
+    # SSM Agent access. Ansible reaches nodes via Session Manager (no SSH),
+    # because opening port 22 in 2026 is a personality trait we don't have.
     "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
     # CloudWatch metrics + logs for fluent-bit / cloudwatch-agent.
     "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
