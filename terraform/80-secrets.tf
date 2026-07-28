@@ -1,5 +1,5 @@
 # 80-secrets.tf
-# Phase 3 — Secrets Manager container that holds the Chatwoot app-level
+# Phase 3: Secrets Manager container that holds the Chatwoot app-level
 # secrets. Terraform creates only the container (with a placeholder version);
 # scripts/load-secrets.sh writes the real values via aws-cli after apply.
 #

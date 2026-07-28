@@ -1,5 +1,5 @@
 # 70-elasticache.tf
-# Phase 3 — ElastiCache Redis 7, primary + 1 replica, Multi-AZ + automatic
+# Phase 3: ElastiCache Redis 7, primary + 1 replica, Multi-AZ + automatic
 # failover, transit + at-rest encryption, AUTH token required.
 #
 # Limitation: ElastiCache requires the AUTH token at creation time, so a
