@@ -1,11 +1,11 @@
 # 60-rds.tf
-# Phase 3 — RDS PostgreSQL 16 Multi-AZ.
+# Phase 3: RDS PostgreSQL 16 Multi-AZ.
 #
 # Notes
 # -----
-# - manage_master_user_password = true → AWS creates a *separate* Secrets
-#   Manager secret holding the master password. The password value NEVER
-#   touches Terraform state (per CLAUDE.md §2 rule 5).
+# - manage_master_user_password = true means AWS creates a *separate*
+#   Secrets Manager secret holding the master password. The password value
+#   NEVER touches Terraform state. state is not a secret keeper.
 # - pgvector: AWS RDS PostgreSQL 16 ships with the `vector` extension
 #   available. We surface a `vector` parameter group entry only for
 #   shared_preload_libraries; the extension itself is created at runtime
@@ -29,7 +29,7 @@ resource "aws_db_parameter_group" "pg16" {
   parameter {
     name  = "shared_preload_libraries"
     value = "pg_stat_statements,vector"
-    # shared_preload_libraries requires a reboot — pending-reboot is fine here
+    # shared_preload_libraries requires a reboot. pending-reboot is fine here
     # because we set it pre-creation.
     apply_method = "pending-reboot"
   }
@@ -60,7 +60,7 @@ resource "aws_db_instance" "main" {
   username = "chatwoot"
 
   # Password is created and rotated by RDS into its own Secrets Manager
-  # secret — Terraform never sees the value.
+  # secret. Terraform never sees the value.
   manage_master_user_password = true
 
   multi_az               = var.rds_multi_az

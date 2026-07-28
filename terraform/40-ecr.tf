@@ -1,5 +1,5 @@
 # 40-ecr.tf
-# Phase 2 — ECR repository for the Chatwoot image (optional mirror of the
+# Phase 2: ECR repository for the Chatwoot image (optional mirror of the
 # upstream image). Used by the Helm chart's `image.repository` value when the
 # operator wants images served from inside the VPC.
 

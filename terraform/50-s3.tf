@@ -1,5 +1,5 @@
 # 50-s3.tf
-# Phase 2 — S3 bucket for Chatwoot ActiveStorage (attachments, exports, avatars).
+# Phase 2: S3 bucket for Chatwoot ActiveStorage (attachments, exports, avatars).
 # Accessed by the Chatwoot pod via IRSA (chatwoot SA in the chatwoot namespace).
 
 resource "random_id" "bucket_suffix" {
