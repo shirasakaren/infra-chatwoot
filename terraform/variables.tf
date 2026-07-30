@@ -1,5 +1,5 @@
 variable "region" {
-  description = "AWS region. Locked to ap-southeast-1 per CLAUDE.md."
+  description = "AWS region. Locked to ap-southeast-1 for this project."
   type        = string
   default     = "ap-southeast-1"
 }
@@ -46,7 +46,7 @@ variable "cloudflare_zone" {
 }
 
 # -----------------------------------------------------------------------------
-# Network — candidate CIDRs. Phase 0 picks the first non-overlapping one.
+# Network: candidate CIDRs. Phase 0 picks the first non-overlapping one.
 # Operator can pin a specific CIDR by setting var.vpc_cidr_override.
 # -----------------------------------------------------------------------------
 variable "vpc_cidr_candidates" {

@@ -1,4 +1,4 @@
-# outputs.tf — populated by later phases. Phase 0 publishes only discovery.
+# outputs.tf: populated by later phases. Phase 0 publishes only discovery.
 
 output "selected_vpc_cidr" {
   description = "VPC CIDR Phase 0 will use (auto-selected to avoid overlap, or override)."
@@ -29,7 +29,7 @@ output "region" {
 }
 
 # -----------------------------------------------------------------------------
-# Phase 1 — Network
+# Phase 1: Network
 # -----------------------------------------------------------------------------
 output "vpc_id" {
   value = aws_vpc.main.id
@@ -69,7 +69,7 @@ output "sg_rds_id"   { value = aws_security_group.rds.id }
 output "sg_redis_id" { value = aws_security_group.redis.id }
 
 # -----------------------------------------------------------------------------
-# Phase 2 — Platform (EKS, IAM, ECR, S3)
+# Phase 2: Platform (EKS, IAM, ECR, S3)
 # -----------------------------------------------------------------------------
 output "eks_cluster_name"      { value = aws_eks_cluster.main.name }
 output "eks_cluster_endpoint"  { value = aws_eks_cluster.main.endpoint }
@@ -99,7 +99,7 @@ output "iam_group_developers" { value = aws_iam_group.developers.name }
 output "iam_users_created"    { value = [for u in aws_iam_user.users : u.name] }
 
 # -----------------------------------------------------------------------------
-# Phase 3 — Data
+# Phase 3: Data
 # -----------------------------------------------------------------------------
 output "rds_instance_id"        { value = aws_db_instance.main.id }
 output "rds_endpoint"           { value = aws_db_instance.main.endpoint }
@@ -122,7 +122,7 @@ output "chatwoot_secret_arn"  { value = aws_secretsmanager_secret.chatwoot.arn }
 output "chatwoot_secret_name" { value = aws_secretsmanager_secret.chatwoot.name }
 
 # -----------------------------------------------------------------------------
-# Phase 4 — Edge (ACM, Cloudflare, SES)
+# Phase 4: Edge (ACM, Cloudflare, SES)
 # -----------------------------------------------------------------------------
 output "acm_certificate_arn"    { value = aws_acm_certificate.app.arn }
 output "acm_certificate_status" { value = aws_acm_certificate.app.status }
