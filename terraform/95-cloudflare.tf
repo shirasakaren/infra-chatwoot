@@ -1,12 +1,12 @@
 # 95-cloudflare.tf
-# Phase 4 — Cloudflare DNS records under the labmgm.org zone.
+# Phase 4: Cloudflare DNS records under the labmgm.org zone.
 # We only create records this project owns:
 #   - ACM validation CNAMEs
 #   - SES DKIM CNAMEs + mail-from MX/TXT
 #   - SPF + DMARC TXT records
-# The app record (support → ALB) is created by Phase 5 Ansible AFTER the
+# The app record (support to ALB) is created by Phase 5 Ansible AFTER the
 # ALB Load Balancer Controller has materialized the ALB and produced its
-# hostname — Terraform doesn't know that value at plan time.
+# hostname. Terraform doesn't know that value at plan time.
 
 data "cloudflare_zone" "main" {
   name = var.cloudflare_zone

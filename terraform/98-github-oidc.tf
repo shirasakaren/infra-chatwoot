@@ -1,10 +1,10 @@
 # 98-github-oidc.tf
-# Phase 8 — GitHub Actions OIDC provider + IAM role that lets CI workflows
+# Phase 8: GitHub Actions OIDC provider + IAM role that lets CI workflows
 # assume short-lived credentials (no long-lived keys in the repo).
 # The role is restricted to the named repo and a small set of read paths
 # (plan/validate/lint). Apply via CI is gated behind an Environment in GH.
 
-# OIDC provider for token.actions.githubusercontent.com — only one of these
+# OIDC provider for token.actions.githubusercontent.com: only one of these
 # is allowed per account, so we check for a pre-existing one and reuse it.
 data "aws_iam_openid_connect_provider" "github_existing" {
   count = var.github_owner != "" && var.github_repo != "" ? 1 : 0

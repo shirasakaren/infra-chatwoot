@@ -1,5 +1,5 @@
 # 96-acm.tf
-# Phase 4 — ACM public certificate for the app FQDN. DNS-validated via
+# Phase 4: ACM public certificate for the app FQDN. DNS-validated via
 # Cloudflare (records created in 95-cloudflare.tf). The cert is bound to
 # the ALB by the Helm-managed ingress in Phase 5.
 

@@ -1,5 +1,5 @@
 # 97-ses.tf
-# Phase 4 — Amazon SES outbound: domain identity, DKIM, mail-from domain,
+# Phase 4: Amazon SES outbound: domain identity, DKIM, mail-from domain,
 # and an IAM user holding SMTP credentials (used by Chatwoot Action Mailer).
 #
 # Sandbox note: brand-new SES accounts can only send to verified addresses.
@@ -18,7 +18,7 @@ resource "aws_ses_domain_mail_from" "main" {
   domain           = aws_ses_domain_identity.main.domain
   mail_from_domain = "mail.${var.cloudflare_zone}"
 
-  # If MX/SPF records are missing we still accept the message — beneficial
+  # If MX/SPF records are missing we still accept the message, beneficial
   # while DNS propagation is in flight.
   behavior_on_mx_failure = "UseDefaultValue"
 }
@@ -34,7 +34,7 @@ resource "aws_ses_domain_identity_verification" "main" {
 }
 
 # -----------------------------------------------------------------------------
-# SMTP user — SES SMTP credentials = IAM access key (username) + a derived
+# SMTP user: SES SMTP credentials = IAM access key (username) + a derived
 # v4-signature password. AWS provider computes `ses_smtp_password_v4`
 # locally; no network call needed.
 # -----------------------------------------------------------------------------
