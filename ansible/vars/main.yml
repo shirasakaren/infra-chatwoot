@@ -1,9 +1,8 @@
 ---
 # ansible/vars/main.yml
 # Common variables. Most concrete values are pulled from Terraform outputs at
-# playbook runtime by scripts/run-ansible.sh (or deploy.sh) and injected via
-# --extra-vars / @vars-from-tf.json. Defaults below are used only when an
-# override isn't passed.
+# playbook runtime by deploy.sh and injected via --extra-vars / @vars-from-tf.json.
+# Defaults below are used only when an override isn't passed.
 
 name_prefix: "{{ lookup('env','NAME_PREFIX') | default('cwta', true) }}"
 aws_region:  "{{ lookup('env','AWS_REGION')  | default('ap-southeast-1', true) }}"
@@ -26,11 +25,11 @@ irsa_chatwoot_role_arn:           ""
 acm_certificate_arn: ""
 s3_bucket_name:      ""
 
-# Helm chart pin — bump deliberately, never auto-track.
+# Helm chart pin: bump deliberately, never auto-track.
 chatwoot_chart_repo:    "https://chatwoot.github.io/charts"
 chatwoot_chart_version: "v2.18.0"
 
-# Replica counts — minimum 2 for HA per CLAUDE.md §7.
+# Replica counts: minimum 2 for HA, period.
 web_replicas:     2
 sidekiq_replicas: 2
 

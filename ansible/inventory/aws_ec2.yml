@@ -2,7 +2,7 @@
 # Dynamic inventory of EKS worker nodes. Discovery is scoped by tag so only
 # this project's instances appear (additive-only guardrail).
 #
-# Connection: aws_ssm — Session Manager, no SSH key, no bastion.
+# Connection: aws_ssm: Session Manager, no SSH key, no bastion.
 # Requires session-manager-plugin locally (preflight checks this).
 
 plugin: amazon.aws.aws_ec2
@@ -28,5 +28,5 @@ compose:
   ansible_aws_ssm_bucket_name: "lookup('env','SSM_BUCKET') | default('', true)"
   ansible_aws_ssm_region: "lookup('env','AWS_REGION') | default('ap-southeast-1', true)"
   ansible_aws_ssm_plugin: "'/usr/local/bin/session-manager-plugin'"
-  # No bucket → community.aws.aws_ssm falls back to in-band file transfer
+  # No bucket means community.aws.aws_ssm falls back to in-band file transfer
   # which works for small writes (LVM playbook uses module exec only).
