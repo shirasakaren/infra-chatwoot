@@ -2,6 +2,8 @@
 # 30-chatwoot.yml
 # Install Chatwoot (community) via the official Helm chart and wire the
 # Cloudflare app DNS record to the ALB hostname once it materializes.
+# (the ALB hostname is a surprise gift from the ALB controller; we cannot
+# know it ahead of time, so we wait for the ingress to tell us. patience.)
 
 - name: Install Chatwoot
   hosts: localhost
@@ -11,17 +13,24 @@
     - ../vars/main.yml
 
   tasks:
+    # add the chatwoot chart repo. the chart lives in github pages like
+    # everything else in this ecosystem. fine. fine!
     - name: Add chatwoot helm repo
       kubernetes.core.helm_repository:
         name: chatwoot
         repo_url: "{{ chatwoot_chart_repo }}"
 
+    # render the values template into a temp file with 0600 perms. the file
+    # has no secrets in it, but we set 0600 anyway out of pure paranoia.
+    # paranoia is a virtue in this repo.
     - name: Render Chatwoot values to a temp file
       ansible.builtin.copy:
         content: "{{ lookup('template', '../templates/chatwoot-values.yaml.j2') }}"
         dest: "/tmp/chatwoot-values.{{ name_prefix }}.yaml"
         mode: "0600"
 
+    # the big install. upgrade --install means re-runs are safe, which is
+    # the only kind of run i trust.
     - name: Helm upgrade --install chatwoot
       kubernetes.core.helm:
         name: chatwoot
@@ -34,6 +43,8 @@
         wait: true
         wait_timeout: 15m
 
+    # the chart runs a db-migrate job on install. we wait for it, because
+    # chatwoot without its migrations is just a very expensive error page.
     - name: Wait for DB migration job to complete
       kubernetes.core.k8s_info:
         api_version: batch/v1
@@ -53,6 +64,8 @@
       delay: 10
       failed_when: false  # the chart may finish migrations before we poll
 
+    # wait for the web pods to be Ready. rails boot is not fast, we've made
+    # peace with that. this loop is our meditation time.
     - name: Wait for >= {{ web_replicas }} chatwoot web pods Ready
       kubernetes.core.k8s_info:
         api_version: apps/v1
@@ -67,6 +80,7 @@
       retries: 60
       delay: 10
 
+    # sidekiq next. no workers, no email, no fun. simple as that.
     - name: Wait for >= {{ sidekiq_replicas }} chatwoot sidekiq pods Ready
       kubernetes.core.k8s_info:
         api_version: apps/v1
@@ -81,6 +95,8 @@
       retries: 60
       delay: 10
 
+    # read the ingress until the ALB hostname appears. it's like waiting
+    # for a text back, but the text is a DNS name.
     - name: Read the ingress to grab the ALB hostname
       kubernetes.core.k8s_info:
         api_version: networking.k8s.io/v1
@@ -98,11 +114,14 @@
       ansible.builtin.set_fact:
         alb_hostname: "{{ ingress_info.resources[0].status.loadBalancer.ingress[0].hostname }}"
 
+    # show the hostname so the operator can ooh and aah.
     - name: Show ALB hostname
       ansible.builtin.debug:
         msg: "ALB hostname: {{ alb_hostname }}"
 
     # ----- Cloudflare app DNS (proxied; Full (Strict)) -----------------
+    # now we point the pretty domain at the ALB. proxied through cloudflare
+    # so the origin stays hidden like a good little IP address.
     - name: Look up Cloudflare zone ID
       ansible.builtin.uri:
         url: "https://api.cloudflare.com/client/v4/zones?name={{ cloudflare_zone }}"
@@ -132,6 +151,8 @@
         return_content: true
       register: cf_existing
 
+    # create the CNAME if it's missing. if it exists we update it below.
+    # either way the domain ends up pointed at the ALB. no duplicates, ever.
     - name: Create proxied CNAME record (if missing)
       ansible.builtin.uri:
         url: "https://api.cloudflare.com/client/v4/zones/{{ cf_zone_id }}/dns_records"
@@ -150,6 +171,8 @@
         status_code: [200, 201]
       when: cf_existing.json.result | length == 0
 
+    # redeploys can get a fresh ALB hostname, so an existing record needs a
+    # little update love. ttl 1 = dns caching, we don't know her.
     - name: Update existing CNAME record to point at the current ALB
       ansible.builtin.uri:
         url: "https://api.cloudflare.com/client/v4/zones/{{ cf_zone_id }}/dns_records/{{ cf_existing.json.result[0].id }}"
