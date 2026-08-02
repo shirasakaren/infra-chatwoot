@@ -4,7 +4,7 @@
 #   - AWS Load Balancer Controller  (provisions the public ALB)
 #   - cluster-autoscaler            (scales the managed node group 2..max)
 #   - metrics-server                (HPA needs this)
-#   - external-secrets              (Secrets Manager → K8s secret sync)
+#   - external-secrets              (Secrets Manager to K8s secret sync)
 #
 # All add-ons use IRSA (role ARNs come from Terraform outputs).
 

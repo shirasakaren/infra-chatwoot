@@ -5,7 +5,7 @@
 # Each worker has an UNFORMATTED secondary EBS volume (provisioned by the
 # launch template in terraform/30-eks.tf). We:
 #   1. Identify the right block device by size (~10 GB, no filesystem).
-#   2. pvcreate → vgcreate vg_data → lvcreate lv_data using 100%FREE.
+#   2. pvcreate to vgcreate vg_data to lvcreate lv_data using 100%FREE.
 #   3. mkfs.xfs and mount at /data.
 #   4. Persist via /etc/fstab using its UUID.
 #
