@@ -9,7 +9,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write     # for OIDC assume-role
+  id-token: write     # OIDC assume-role. no long-lived keys in this house.
   pull-requests: write
 
 jobs:

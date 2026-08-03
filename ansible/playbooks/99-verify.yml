@@ -1,5 +1,5 @@
 ---
-# 99-verify.yml — Phase 8 acceptance from inside Ansible. Mirrors verify.sh
+# 99-verify.yml: Phase 8 acceptance from inside Ansible. Mirrors verify.sh
 # but uses kubernetes.core for direct K8s checks. Either path is sufficient
 # for the gate; deploy.sh runs verify.sh, but ops can also run this manually:
 #   ansible-playbook ansible/playbooks/99-verify.yml --extra-vars @tf.json
@@ -12,6 +12,8 @@
     - ../vars/main.yml
 
   tasks:
+    # grab the state of everything chatwoot-shaped, then judge it harshly
+    # at the bottom. classic report card energy.
     - name: web Deployment readiness
       kubernetes.core.k8s_info:
         api_version: apps/v1
@@ -57,6 +59,8 @@
         namespace: "{{ chatwoot_namespace }}"
       register: es
 
+    # the verdict. everything above was evidence gathering; this is the
+    # courtroom scene. all five checks must hold or we fail the whole run.
     - name: Assertions
       ansible.builtin.assert:
         that:

@@ -1,6 +1,6 @@
 ---
 # 40-observability.yml
-# Ship pod + node logs to CloudWatch via Fluent Bit (DaemonSet, IRSA-free —
+# Ship pod + node logs to CloudWatch via Fluent Bit (DaemonSet, IRSA-free:
 # the node IAM role already has CloudWatchAgentServerPolicy). Conditionally
 # install the Datadog cluster agent if DATADOG_API_KEY is set.
 # Sentry / Scout are pure env-var integrations and need no agent here.
@@ -13,11 +13,16 @@
     - ../vars/main.yml
 
   tasks:
+    # fluent bit repo. it's on the eks-charts server because aws decided
+    # their fork of fluent bit deserves its own chart. okay, aws.
     - name: Add aws-for-fluent-bit helm repo
       kubernetes.core.helm_repository:
         name: aws-fb
         repo_url: https://aws.github.io/eks-charts
 
+    # install fluent bit as a DaemonSet. one per node, shipping logs to
+    # cloudwatch. everything else (kinesis, firehose, elasticsearch) stays
+    # off because we're not made of money or patience.
     - name: Install/upgrade aws-for-fluent-bit
       kubernetes.core.helm:
         name: aws-for-fluent-bit
@@ -41,6 +46,8 @@
             enabled: false
 
     # ----- Optional: Datadog cluster agent ------------------------------
+    # datadog only if you actually set DATADOG_API_KEY. if you didn't, we
+    # skip it entirely and tell you so. no half-installed agents in this house.
     - name: Add datadog helm repo (only if DATADOG_API_KEY is set)
       kubernetes.core.helm_repository:
         name: datadog
@@ -72,6 +79,8 @@
               enabled: true
       when: optional_env.DATADOG_API_KEY | length > 0
 
+    # and when datadog is off, we say it out loud so nobody panics later
+    # wondering where the fancy dashboards went.
     - name: Skip Datadog (no DATADOG_API_KEY set)
       ansible.builtin.debug:
         msg: "Datadog disabled (DATADOG_API_KEY blank in .env)"

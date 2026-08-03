@@ -1,8 +1,8 @@
 name: terraform-apply
 
-# Manual dispatch only. The `production` Environment must be configured in the
-# repo Settings → Environments with a required reviewer; that adds the manual
-# approval gate before any apply runs.
+# Manual dispatch only, because letting a bot apply infra unsupervised is how
+# horror stories start. The `production` Environment needs a required reviewer
+# in the repo Settings so a human has to nod before anything gets applied.
 
 on:
   workflow_dispatch:
