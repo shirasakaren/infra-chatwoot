@@ -19,6 +19,8 @@
     # --------------------------------------------------------------
     # AWS Load Balancer Controller
     # --------------------------------------------------------------
+    # four helm repos in a row. feels like meal prep for infrastructure.
+    # at least helm remembers them after this.
     - name: Add aws-load-balancer-controller helm repo
       kubernetes.core.helm_repository:
         name: eks
@@ -39,6 +41,8 @@
         name: external-secrets
         repo_url: https://charts.external-secrets.io
 
+    # the ALB controller. two replicas because one controller is a single
+    # point of "where did my load balancer go".
     - name: Install/upgrade aws-load-balancer-controller
       kubernetes.core.helm:
         name: aws-load-balancer-controller
@@ -62,6 +66,8 @@
     # --------------------------------------------------------------
     # cluster-autoscaler
     # --------------------------------------------------------------
+    # cluster-autoscaler, the roommate who eats your leftovers (nodes) and
+    # swears it's for your own good. least-waste expander = frugal king.
     - name: Install/upgrade cluster-autoscaler
       kubernetes.core.helm:
         name: cluster-autoscaler
@@ -89,6 +95,9 @@
     # --------------------------------------------------------------
     # metrics-server (HPA dependency)
     # --------------------------------------------------------------
+    # metrics-server. HPA is literally useless without it, yet EKS doesn't
+    # ship it by default. make it make sense. (it's the insecure-tls flag.
+    # don't think about it too hard, it's the standard trade-off.)
     - name: Install/upgrade metrics-server
       kubernetes.core.helm:
         name: metrics-server
@@ -113,6 +122,8 @@
         name: external-secrets
         state: present
 
+    # ESO, the middleman between AWS Secrets Manager and our pods. it
+    # syncs secrets so we never have to paste a password into a yaml again.
     - name: Install/upgrade external-secrets operator
       kubernetes.core.helm:
         name: external-secrets

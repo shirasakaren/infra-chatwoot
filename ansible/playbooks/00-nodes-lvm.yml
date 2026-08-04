@@ -25,16 +25,23 @@
     data_lv: lv_data
 
   tasks:
+    # lvm2 should already be there on AL2023, but i've been gaslit by AMIs
+    # before. never trust a cloud image's "defaults".
     - name: Ensure LVM2 utilities are installed (AL2023 has lvm2 by default)
       ansible.builtin.dnf:
         name: lvm2
         state: present
       when: ansible_facts['os_family'] == 'RedHat'
 
+    # re-gather facts because ansible cached the devices BEFORE the dnf run
+    # and we need the freshest gossip about what disks exist.
     - name: Re-gather block-device facts (ansible_devices)
       ansible.builtin.setup:
         filter: ansible_devices
 
+    # the great disk hunt. we're looking for a ~10G drive with no partition
+    # table and no filesystem, which in EKS terms means "the one we paid for
+    # but haven't formatted yet". this filter chain is ugly and it knows it.
     - name: Identify the unformatted ~{{ data_volume_gb }}G EBS device
       ansible.builtin.set_fact:
         data_device: >-
@@ -55,9 +62,11 @@
 
     # The first filter chain in some Ansible versions skips 'partitions'-empty
     # checks above; fall back to a simpler size-based pick if needed.
+    # (translation: the fancy jinja sometimes just doesn't, so plan b exists.)
     - name: Fallback identification if the strict filter found nothing
       when: data_device == ''
       block:
+        # plan b: ask lsblk nicely. lsblk never lies. lsblk is a real one.
         - name: List candidate devices by size
           ansible.builtin.shell: |
             set -e
@@ -71,6 +80,8 @@
           ansible.builtin.set_fact:
             data_device: "{{ lsblk_pick.stdout | trim }}"
 
+    # if we STILL can't find the disk, the node is gaslighting us. fail loud
+    # instead of formatting something innocent like the root volume.
     - name: Fail if no candidate block device was found
       ansible.builtin.fail:
         msg: >-
@@ -78,16 +89,20 @@
           {{ inventory_hostname }}. Devices: {{ ansible_devices | dict2items | map(attribute='key') | list }}
       when: data_device == ''
 
+    # tell the operator which disk won the lottery, for the record.
     - name: Report selected device
       ansible.builtin.debug:
         msg: "Selected /dev/{{ data_device }} for LVM on {{ inventory_hostname }}"
 
+    # pvcreate. this disk is about to have a very structured glow-up.
     - name: Create LVM physical volume
       community.general.lvg:
         vg: "{{ data_vg }}"
         pvs: "/dev/{{ data_device }}"
         state: present
 
+    # carve the whole volume group into one logical volume. all of it.
+    # we don't believe in leftovers.
     - name: Create logical volume {{ data_lv }} (100% of vg_data)
       community.general.lvol:
         vg: "{{ data_vg }}"
@@ -96,6 +111,8 @@
         state: present
         shrink: false
 
+    # xfs, because ext4 was already taken and honestly xfs is just nicer
+    # about big files. this is not up for debate.
     - name: Make XFS filesystem on the logical volume
       community.general.filesystem:
         fstype: xfs
@@ -107,6 +124,8 @@
         state: directory
         mode: "0755"
 
+    # mount via fstab with noatime. noatime is the single free performance
+    # win in this entire stack and i will defend it with my life.
     - name: Mount {{ data_mountpoint }} via /etc/fstab (by UUID)
       ansible.posix.mount:
         path: "{{ data_mountpoint }}"
@@ -115,6 +134,7 @@
         opts: "defaults,noatime"
         state: mounted
 
+    # proof of life: df + lvs. if this fails, ansible's about to get loud.
     - name: Verify /data is mounted on the LV
       ansible.builtin.shell: |
         set -eo pipefail
