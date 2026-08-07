@@ -1,37 +1,27 @@
-<div align="center">
+<p align="center">
+  <img src="assets/infra-chatwoot.png" alt="Chatwoot-TA infrastructure banner" width="100%">
+</p>
 
 # Chatwoot-TA
 
-### High-availability Chatwoot on AWS — one command, fully reproducible
+### High-availability Chatwoot on AWS: one command, fully reproducible
 
 <p>
   <em>Terraform + Ansible. Multi-AZ EKS, Multi-AZ RDS, Redis HA, Cloudflare edge,<br/>
   ACM TLS, AWS Secrets Manager + External Secrets Operator, SES outbound.</em>
 </p>
 
-<p>
-  <img alt="terraform" src="https://img.shields.io/badge/terraform-%E2%89%A51.6-7B42BC?logo=terraform&logoColor=white">
-  <img alt="aws" src="https://img.shields.io/badge/AWS-ap--southeast--1-FF9900?logo=amazonaws&logoColor=white">
-  <img alt="eks" src="https://img.shields.io/badge/EKS-1.32-326CE5?logo=kubernetes&logoColor=white">
-  <img alt="postgres" src="https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white">
-  <img alt="redis" src="https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white">
-  <img alt="ansible" src="https://img.shields.io/badge/Ansible-2.15%2B-EE0000?logo=ansible&logoColor=white">
-  <img alt="cloudflare" src="https://img.shields.io/badge/Edge-Cloudflare-F38020?logo=cloudflare&logoColor=white">
-  <img alt="ha" src="https://img.shields.io/badge/HA-Multi--AZ-2ea44f">
-  <img alt="idempotent" src="https://img.shields.io/badge/idempotent-yes-2ea44f">
-</p>
+<!--badges-->
 
 <p>
-  <a href="#-quick-start">Quick start</a> ·
-  <a href="#%EF%B8%8F-architecture">Architecture</a> ·
-  <a href="#-high-availability">HA model</a> ·
-  <a href="#-phases--gates">Phases</a> ·
-  <a href="#-cost">Cost</a> ·
-  <a href="#-teardown">Teardown</a> ·
-  <a href="#-troubleshooting">Troubleshooting</a>
+  <a href="#what-this-is">What this is</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#high-availability">HA model</a> ·
+  <a href="#phases-and-gates">Phases</a> ·
+  <a href="#cost">Cost</a> ·
+  <a href="#teardown">Teardown</a> ·
+  <a href="#troubleshooting">Troubleshooting</a>
 </p>
-
-</div>
 
 ---
 
@@ -60,26 +50,26 @@ A **single-command, idempotent IaC deployment** of [Chatwoot Community](https://
 
 ---
 
-## 📋 Table of contents
+## Table of contents
 
-- [🏗️ Architecture](#%EF%B8%8F-architecture)
-- [🌐 Network topology](#-network-topology)
-- [🛡️ High availability](#%EF%B8%8F-high-availability)
-- [🔐 Security model](#-security-model)
-- [📦 Phases & gates](#-phases--gates)
-- [🛠️ Tech stack](#%EF%B8%8F-tech-stack)
-- [🚀 Quick start](#-quick-start)
-- [⚙️ Configuration](#%EF%B8%8F-configuration)
-- [💰 Cost](#-cost)
-- [🧪 Verification](#-verification)
-- [🧹 Teardown](#-teardown)
-- [🗂️ Repository layout](#%EF%B8%8F-repository-layout)
-- [⚠️ Caveats](#%EF%B8%8F-caveats)
-- [🐛 Troubleshooting](#-troubleshooting)
+- [Architecture](#architecture)
+- [Network topology](#network-topology)
+- [High availability](#high-availability)
+- [Security model](#security-model)
+- [Phases & gates](#phases-and-gates)
+- [Tech stack](#tech-stack)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Cost](#cost)
+- [Verification](#verification)
+- [Teardown](#teardown)
+- [Repository layout](#repository-layout)
+- [Caveats](#caveats)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 The deployed system spans Cloudflare's edge, an AWS VPC across two AZs, and one untouched on-prem Proxmox node (the Keycloak host you reach via env vars only).
 
@@ -169,7 +159,7 @@ Source: [`docs/diagrams/architecture.puml`](docs/diagrams/architecture.puml). Re
 
 ---
 
-## 🌐 Network topology
+## Network topology
 
 Two AZs, each with **public** / **private** / **db** subnets, and **its own NAT gateway** so an AZ failure can't take down egress for the surviving side.
 
@@ -234,7 +224,7 @@ Computed from the auto-selected `/16` (default `10.42.0.0/16`, shifted to the ne
 
 ---
 
-## 🛡️ High availability
+## High availability
 
 ```mermaid
 flowchart TD
@@ -263,9 +253,9 @@ flowchart TD
 
 ---
 
-## 🔐 Security model
+## Security model
 
-### Secrets pipeline — values never touch Terraform state
+### Secrets pipeline: values never touch Terraform state
 
 ```mermaid
 sequenceDiagram
@@ -334,7 +324,7 @@ flowchart LR
 
 ---
 
-## 📦 Phases & gates
+## Phases and gates
 
 `deploy.sh` runs nine phases. Phase 0 is the only human checkpoint; after `proceed`, the rest runs unattended.
 
@@ -342,14 +332,14 @@ flowchart LR
 flowchart TD
     P0[Phase 0<br/>preflight · bootstrap · discovery<br/>writes do-not-touch.json]:::p
     GATE0{{Approval gate<br/>operator types proceed}}:::gate
-    P1[Phase 1 — Network<br/>VPC · 2 NAT GWs · subnets · SGs]:::p
-    P2[Phase 2 — Platform<br/>EKS · nodegroup · IAM · ECR · S3]:::p
-    P3[Phase 3 — Data<br/>RDS Multi-AZ · Redis HA · Secrets Manager]:::p
-    P4[Phase 4 — Edge<br/>ACM · Cloudflare DNS · SES DKIM]:::p
-    P5[Phase 5 — Chatwoot core<br/>Ansible LVM · add-ons · ESO · Helm]:::p
-    P6[Phase 6 — Integrations<br/>.env-driven optional]:::p
-    P7[Phase 7 — Observability<br/>CloudWatch · Fluent Bit · optional Datadog]:::p
-    P8[Phase 8 — Verification<br/>scripts/verify.sh PASS/FAIL table]:::done
+    P1[Phase 1: Network<br/>VPC · 2 NAT GWs · subnets · SGs]:::p
+    P2[Phase 2: Platform<br/>EKS · nodegroup · IAM · ECR · S3]:::p
+    P3[Phase 3: Data<br/>RDS Multi-AZ · Redis HA · Secrets Manager]:::p
+    P4[Phase 4: Edge<br/>ACM · Cloudflare DNS · SES DKIM]:::p
+    P5[Phase 5: Chatwoot core<br/>Ansible LVM · add-ons · ESO · Helm]:::p
+    P6[Phase 6: Integrations<br/>.env-driven optional]:::p
+    P7[Phase 7: Observability<br/>CloudWatch · Fluent Bit · optional Datadog]:::p
+    P8[Phase 8: Verification<br/>scripts/verify.sh PASS/FAIL table]:::done
 
     P0 --> GATE0 --> P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8
 
@@ -370,11 +360,11 @@ flowchart TD
 | 5     | Ansible: LVM via SSM, add-ons, ESO, Chatwoot Helm, CF CNAME   | `/data` on every node; ExternalSecret synced; ≥2 web + ≥2 sidekiq Ready; ingress has ALB hostname     |
 | 6     | Integration status print (already wired via ESO)              | Active env keys listed; absent integrations cleanly disabled                                          |
 | 7     | Fluent Bit DaemonSet + optional Datadog                       | App log group exists; agents healthy (if enabled)                                                     |
-| 8     | `scripts/verify.sh` end-to-end acceptance                     | Every line in the [Acceptance checklist](#-verification) is PASS                                      |
+| 8     | `scripts/verify.sh` end-to-end acceptance                     | Every line in the [Acceptance checklist](#verification) is PASS                                       |
 
 ---
 
-## 🛠️ Tech stack
+## Tech stack
 
 <table>
 <tr>
@@ -445,11 +435,13 @@ flowchart TD
 </tr>
 </table>
 
+<!--icons-->
+
 ---
 
 ## 🚀 Quick start
 
-### Prerequisites
+### Prerequisits
 
 > [!IMPORTANT]
 > All of these must be on your `$PATH` before running `./deploy.sh`. Preflight will fail clearly if anything is missing.
@@ -496,7 +488,7 @@ After `./deploy.sh` finishes, open [`https://support.labmgm.org`](https://suppor
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 Every knob lives in `.env`. Blank values **disable** the corresponding feature.
 
@@ -551,13 +543,13 @@ flowchart LR
 
 ---
 
-## 💰 Cost
+## Cost
 
 The intended lifecycle is **deploy → demo → destroy**. The pricing reflects that:
 
 ```mermaid
 pie showData
-    title Monthly cost share if left running 24/7 — approx US$420
+    title Monthly cost share if left running 24/7, approx US$420
     "EKS control plane"   : 73
     "Nodegroup (2 × t3.large)" : 122
     "NAT gateways (2)"    : 78
@@ -570,9 +562,9 @@ pie showData
 
 | Mode                       | Rough cost           | Notes                                                                    |
 |----------------------------|----------------------|--------------------------------------------------------------------------|
-| Running (per hour)         | ~US$0.60 – US$0.90   | EKS + nodes + NAT + RDS + Redis + ALB                                    |
-| 5-hour demo                | ~US$4 – US$6         | The pattern this repo is built for                                       |
-| Left on 24 × 7             | ~US$350 – US$500/mo  | Inside the US$750/mo budget; well above the deploy-when-needed pattern   |
+| Running (per hour)         | ~US$0.60 to US$0.90  | EKS + nodes + NAT + RDS + Redis + ALB                                    |
+| 5-hour demo                | ~US$4 to US$6        | The pattern this repo is built for                                       |
+| Left on 24 × 7             | ~US$350 to US$500/mo | Inside the US$750/mo budget; well above the deploy-when-needed pattern   |
 
 > [!TIP]
 > A single destroy snapshots RDS by default — `./destroy.sh` is cheap, fast, and safe.
@@ -605,7 +597,7 @@ pie showData
 
 ---
 
-## 🧹 Teardown
+## Teardown
 
 ```bash
 ./destroy.sh                  # drains ingresses, removes CF record, snapshots RDS, terraform destroy
@@ -636,7 +628,7 @@ flowchart LR
 
 ---
 
-## 🗂️ Repository layout
+## Repository layout
 
 ```text
 chatwoot-ta/
@@ -701,7 +693,7 @@ chatwoot-ta/
 
 ---
 
-## ⚠️ Caveats
+## Caveats
 
 > [!WARNING]
 > Read these before showing the demo or planning a long-running deployment.
@@ -750,7 +742,7 @@ Disabled by request — env keys are present in `.env.example` but blank. Popula
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 <details>
 <summary><b>Preflight fails on Cloudflare token</b></summary>
