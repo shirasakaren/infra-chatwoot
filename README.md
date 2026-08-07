@@ -11,7 +11,17 @@
   ACM TLS, AWS Secrets Manager + External Secrets Operator, SES outbound.</em>
 </p>
 
-<!--badges-->
+<p>
+  <img alt="terraform" src="https://img.shields.io/badge/terraform-%E2%89%A51.6-7B42BC?logo=terraform&logoColor=white">
+  <img alt="aws" src="https://img.shields.io/badge/AWS-ap--southeast--1-FF9900?logo=amazonaws&logoColor=white">
+  <img alt="eks" src="https://img.shields.io/badge/EKS-1.32-326CE5?logo=kubernetes&logoColor=white">
+  <img alt="postgres" src="https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1?logo=postgresql&logoColor=white">
+  <img alt="redis" src="https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white">
+  <img alt="ansible" src="https://img.shields.io/badge/Ansible-2.15%2B-EE0000?logo=ansible&logoColor=white">
+  <img alt="cloudflare" src="https://img.shields.io/badge/Edge-Cloudflare-F38020?logo=cloudflare&logoColor=white">
+  <img alt="ha" src="https://img.shields.io/badge/HA-Multi--AZ-2ea44f">
+  <img alt="idempotent" src="https://img.shields.io/badge/idempotent-yes-2ea44f">
+</p>
 
 <p>
   <a href="#what-this-is">What this is</a> ·
