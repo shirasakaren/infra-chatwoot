@@ -445,7 +445,9 @@ flowchart TD
 </tr>
 </table>
 
-<!--icons-->
+<p align="center">
+  <img src="https://skillicons.dev/icons?i=terraform,ansible,kubernetes,aws,postgres,redis,cloudflare,githubactions,bash" alt="tech stack icons">
+</p>
 
 ---
 
