@@ -37,7 +37,7 @@
 
 ## ✨ What this is
 
-A **single-command, idempotent IaC deployment** of [Chatwoot Community](https://www.chatwoot.com/) on AWS, designed for the **TA / final-project rubric** and engineered as if it were production. Run `./deploy.sh` from your laptop; run `./destroy.sh` when you're done. Re-running either is safe.
+A **single-command, idempotent IaC deployment** of [Chatwoot Community](https://www.chatwoot.com/) on AWS, designed for the **TA / final-project rubric** and engineered as if it were production, because the demo gets audited. Run `./deploy.sh` from your laptop; run `./destroy.sh` when you're done. Re-running either is safe, and cheap enough to do often.
 
 > [!IMPORTANT]
 > **Shared-account safe.** This repo is built for an AWS account that already contains other infrastructure. Phase 0 runs a **read-only discovery** of every existing VPC, EKS cluster, and Route 53 zone, writes them to `terraform/discovery/do-not-touch.json`, and refuses to proceed if any candidate CIDR or name collides. State is isolated to a project-scoped S3 backend, so `terraform destroy` can only ever remove resources this stack created.
