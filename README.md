@@ -35,7 +35,7 @@
 
 ---
 
-## ✨ What this is
+## What this is
 
 A **single-command, idempotent IaC deployment** of [Chatwoot Community](https://www.chatwoot.com/) on AWS, designed for the **TA / final-project rubric** and engineered as if it were production, because the demo gets audited. Run `./deploy.sh` from your laptop; run `./destroy.sh` when you're done. Re-running either is safe, and cheap enough to do often.
 
@@ -160,7 +160,7 @@ Source: [`docs/diagrams/architecture.puml`](docs/diagrams/architecture.puml). Re
 | **Compute**        | cluster-autoscaler                   | Scales the nodegroup 2 → 4 on demand                                                          |
 | **Data**           | RDS PostgreSQL 16 Multi-AZ           | App database; `vector` extension preloaded for pgvector                                       |
 | **Data**           | ElastiCache Redis 7                  | Sidekiq queues + cache; primary + replica with automatic failover                             |
-| **Storage**        | S3 (ActiveStorage)                   | File attachments, exports — accessed via IRSA, no static keys                                  |
+| **Storage**        | S3 (ActiveStorage)                   | File attachments, exports, accessed via IRSA, no static keys                                  |
 | **Registry**       | ECR                                  | Mirror of `chatwoot/chatwoot` images                                                          |
 | **Secrets**        | AWS Secrets Manager + ESO            | App secrets sourced from `.env` + TF outputs at deploy time, **never** in tfstate as plaintext |
 | **Identity**       | IAM users/groups/policies + IRSA     | Manajemen User + per-workload least-privilege via OIDC                                        |
@@ -230,7 +230,7 @@ Computed from the auto-selected `/16` (default `10.42.0.0/16`, shifted to the ne
 | **db**      | `10.42.128.0/20`  | `10.42.144.0/20`   | RDS, ElastiCache                       | _none_ (no egress)  |
 
 > [!TIP]
-> The 4096-IP gap between `/20` 4 and `/20` 8 is intentional headroom — Phase 0 can carve future tiers (e.g. cache, MSK) without renumbering.
+> The 4096-IP gap between `/20` 4 and `/20` 8 is intentional headroom, so Phase 0 can carve future tiers (e.g. cache, MSK) without renumbering.
 
 ---
 
@@ -330,7 +330,7 @@ flowchart LR
 | `${prefix}-gha`                     | GitHub OIDC     | `ReadOnlyAccess` for CI plan workflow                    |
 
 > [!NOTE]
-> The Chatwoot pod's IRSA role is scoped to **only its S3 bucket**. RDS master password is created and rotated by AWS RDS itself (`manage_master_user_password = true`); Terraform never sees the value. Redis auth token is the one secret value that lands in tfstate by necessity — the state bucket is versioned + encrypted + TLS-only as a defence in depth.
+> The Chatwoot pod's IRSA role is scoped to **only its S3 bucket**. RDS master password is created and rotated by AWS RDS itself (`manage_master_user_password = true`); Terraform never sees the value. Redis auth token is the one secret value that lands in tfstate by necessity. The state bucket is versioned + encrypted + TLS-only as a defence in depth.
 
 ---
 
@@ -451,7 +451,7 @@ flowchart TD
 
 ---
 
-## 🚀 Quick start
+## Quick start
 
 ### Prerequisits
 
@@ -486,15 +486,15 @@ After `./deploy.sh` finishes, open [`https://support.labmgm.org`](https://suppor
 <details>
 <summary><b>What deploy.sh actually does, in order</b></summary>
 
-1. **Preflight** — tool versions, `.env` keys, AWS STS, Cloudflare token, Service Quotas.
-2. **Bootstrap** — local-state TF creates a versioned, encrypted S3 bucket and a DynamoDB lock table.
-3. **`terraform init`** — main stack against the S3 backend just created.
-4. **Phase 0** — discovery + plan (no billable resources yet) + **approval gate**.
-5. **`terraform apply`** — Phases 1–4 (network, platform, data, edge).
-6. **`load-secrets.sh`** — `.env` + TF outputs → Secrets Manager (values bypass tfstate).
-7. **`aws eks update-kubeconfig`** — point `kubectl` at the new cluster.
-8. **Ansible** — `00-nodes-lvm` → `10-cluster-addons` → `20-secrets` → `30-chatwoot` → `40-observability`.
-9. **`verify.sh`** — prints the acceptance table; non-zero exit on any FAIL.
+1. **Preflight**: tool versions, `.env` keys, AWS STS, Cloudflare token, Service Quotas.
+2. **Bootstrap**: local-state TF creates a versioned, encrypted S3 bucket and a DynamoDB lock table.
+3. **`terraform init`**: main stack against the S3 backend just created.
+4. **Phase 0**: discovery + plan (no billable resources yet) + **approval gate**.
+5. **`terraform apply`**: Phases 1 to 4 (network, platform, data, edge).
+6. **`load-secrets.sh`**: `.env` + TF outputs → Secrets Manager (values bypass tfstate).
+7. **`aws eks update-kubeconfig`**: point `kubectl` at the new cluster.
+8. **Ansible**: `00-nodes-lvm` → `10-cluster-addons` → `20-secrets` → `30-chatwoot` → `40-observability`.
+9. **`verify.sh`**: prints the acceptance table; non-zero exit on any FAIL.
 
 </details>
 
@@ -551,7 +551,7 @@ flowchart LR
 </details>
 
 > [!NOTE]
-> Social channels (Facebook, Instagram, Twitter/X, Slack) are **intentionally disabled** by request — env keys are present but blank.
+> Social channels (Facebook, Instagram, Twitter/X, Slack) are **intentionally disabled** by request; env keys are present but blank.
 
 ---
 
@@ -579,11 +579,11 @@ pie showData
 | Left on 24 × 7             | ~US$350 to US$500/mo | Inside the US$750/mo budget; well above the deploy-when-needed pattern   |
 
 > [!TIP]
-> A single destroy snapshots RDS by default — `./destroy.sh` is cheap, fast, and safe.
+> A single destroy snapshots RDS by default, so `./destroy.sh` is cheap, fast, and safe.
 
 ---
 
-## 🧪 Verification
+## Verification
 
 `scripts/verify.sh` runs at the end of `deploy.sh` and prints a PASS/FAIL table.
 
@@ -644,7 +644,7 @@ flowchart LR
 
 ```text
 chatwoot-ta/
-├── deploy.sh                       # entrypoint — Phases 0..8 end-to-end
+├── deploy.sh                       # entrypoint for Phases 0..8 end-to-end
 ├── destroy.sh                      # safe, state-scoped teardown
 ├── README.md                       # this file
 ├── .env.example                    # every key commented; empty = feature off
@@ -734,7 +734,7 @@ ElastiCache requires the AUTH token at create time, so the token lives in Terraf
 <details>
 <summary><b>App data does not survive a destroy</b></summary>
 
-`./destroy.sh` removes RDS + ElastiCache. The default flow takes a final RDS snapshot so you can restore on the next deploy. ElastiCache contents are queue/cache only — losing them is harmless after a graceful drain.
+`./destroy.sh` removes RDS + ElastiCache. The default flow takes a final RDS snapshot so you can restore on the next deploy. ElastiCache contents are queue/cache only, so losing them is harmless after a graceful drain.
 
 </details>
 
@@ -748,7 +748,7 @@ The app reads `MAXMIND_LICENSE_KEY` for the GeoLite2 database. Sign up for a fre
 <details>
 <summary><b>Social channels (FB / IG / X / Slack)</b></summary>
 
-Disabled by request — env keys are present in `.env.example` but blank. Populate them later if needed.
+Disabled by request; env keys are present in `.env.example` but blank. Populate them later if needed.
 
 </details>
 
@@ -759,7 +759,7 @@ Disabled by request — env keys are present in `.env.example` but blank. Popula
 <details>
 <summary><b>Preflight fails on Cloudflare token</b></summary>
 
-The token needs **both** `Zone.Zone:Read` and `Zone.DNS:Edit` scoped to `labmgm.org`. The zone-list endpoint must return that zone — preflight verifies this explicitly.
+The token needs **both** `Zone.Zone:Read` and `Zone.DNS:Edit` scoped to `labmgm.org`. The zone-list endpoint must return that zone, and preflight verifies this explicitly.
 
 </details>
 
@@ -786,7 +786,7 @@ Most common cause: the ALB Controller has insufficient permissions. Phase 5 inst
 kubectl -n kube-system logs deploy/aws-load-balancer-controller
 ```
 
-If the controller log says `subnets ... did not have the required tag`, re-run `terraform apply` — Phase 1 sets `kubernetes.io/role/elb` (public) and `kubernetes.io/role/internal-elb` (private) automatically.
+If the controller log says `subnets ... did not have the required tag`, re-run `terraform apply`; Phase 1 sets `kubernetes.io/role/elb` (public) and `kubernetes.io/role/internal-elb` (private) automatically.
 
 </details>
 
@@ -807,10 +807,10 @@ aws ec2 describe-network-interfaces --filters Name=vpc-id,Values=<vpc-id> \
 
 The two known sources we explicitly guarded against:
 
-1. `local_file` in `00-discovery.tf` used to include a `timestamp()` (fixed — would churn on every plan).
+1. `local_file` in `00-discovery.tf` used to include a `timestamp()` (fixed, it would churn on every plan).
 2. `aws_db_instance.master_user_secret_kms_key_id` is ignored in `lifecycle.ignore_changes` (AWS may rotate the KMS key during managed-password rotation).
 
-If you see drift elsewhere, file an issue — we want `plan = 0` to be a hard invariant.
+If you see drift elsewhere, file an issue; we want `plan = 0` to be a hard invariant.
 
 </details>
 
