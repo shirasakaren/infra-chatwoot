@@ -37,7 +37,7 @@
 
 ## What this is
 
-A **single-command, idempotent IaC deployment** of [Chatwoot Community](https://www.chatwoot.com/) on AWS, designed for the **TA / final-project rubric** and engineered as if it were production, because the demo gets audited. Run `./deploy.sh` from your laptop; run `./destroy.sh` when you're done. Re-running either is safe, and cheap enough to do often.
+A **single-command, idempotent IaC deployment** of [Chatwoot Community](https://www.chatwoot.com/) on AWS, built for the **TA / final-project rubric** and engineered as if it were production, because the demo gets audited. Run `./deploy.sh` from your laptop; run `./destroy.sh` when you're done. Re-running either is safe, and cheap enough to do often.
 
 > [!IMPORTANT]
 > **Shared-account safe.** This repo is built for an AWS account that already contains other infrastructure. Phase 0 runs a **read-only discovery** of every existing VPC, EKS cluster, and Route 53 zone, writes them to `terraform/discovery/do-not-touch.json`, and refuses to proceed if any candidate CIDR or name collides. State is isolated to a project-scoped S3 backend, so `terraform destroy` can only ever remove resources this stack created.
@@ -481,7 +481,7 @@ cp .env.example .env             # fill OWNER + CLOUDFLARE_API_TOKEN + GITHUB_OW
 ./deploy.sh                       # preflight → bootstrap → discovery → approval → end-to-end
 ```
 
-After `./deploy.sh` finishes, open [`https://support.labmgm.org`](https://support.labmgm.org) and check the verification table printed at the end.
+After `./deploy.sh` finishes, open [`https://support.labmgm.org`](https://support.labmgm.org) and check the verification table printed at the end. Keep that tab open, the demo will need it.
 
 <details>
 <summary><b>What deploy.sh actually does, in order</b></summary>
@@ -557,7 +557,7 @@ flowchart LR
 
 ## Cost
 
-The intended lifecycle is **deploy → demo → destroy**. The pricing reflects that:
+The intended lifecycle is **deploy → demo → destroy**, and the pricing reflects it.
 
 ```mermaid
 pie showData
