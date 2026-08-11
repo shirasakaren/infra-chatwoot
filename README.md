@@ -453,7 +453,7 @@ flowchart TD
 
 ## Quick start
 
-### Prerequisits
+### Prerequisites
 
 > [!IMPORTANT]
 > All of these must be on your `$PATH` before running `./deploy.sh`. Preflight will fail clearly if anything is missing.
