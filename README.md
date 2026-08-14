@@ -2,6 +2,8 @@
   <img src="assets/infra-chatwoot.png" alt="Chatwoot-TA infrastructure banner" width="100%">
 </p>
 
+<div align="center">
+
 # Chatwoot-TA
 
 ### High-availability Chatwoot on AWS: one command, fully reproducible
@@ -32,6 +34,8 @@
   <a href="#teardown">Teardown</a> ·
   <a href="#troubleshooting">Troubleshooting</a>
 </p>
+
+</div>
 
 ---
 
@@ -476,7 +480,7 @@ You also need:
 ### Three commands
 
 ```bash
-git clone <this-repo> chatwoot-ta && cd chatwoot-ta
+git clone https://github.com/shirasakaren/infra-chatwoot chatwoot-ta && cd chatwoot-ta
 cp .env.example .env             # fill OWNER + CLOUDFLARE_API_TOKEN + GITHUB_OWNER/REPO
 ./deploy.sh                       # preflight → bootstrap → discovery → approval → end-to-end
 ```
