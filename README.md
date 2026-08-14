@@ -95,7 +95,7 @@ flowchart LR
     end
 
     subgraph CF["Cloudflare · authoritative DNS + CDN"]
-        DNS[(labmgm.org zone<br/>support.labmgm.org CNAME · proxied)]
+        DNS[(your domain zone<br/>YOUR_ENDPOINT CNAME · proxied)]
     end
 
     subgraph AWS["AWS · ap-southeast-1"]
@@ -121,7 +121,7 @@ flowchart LR
         KC[("Keycloak<br/>(consumed via env vars)")]
     end
 
-    U -->|HTTPS<br/>support.labmgm.org| DNS
+    U -->|HTTPS<br/>YOUR_DOMAIN| DNS
     DNS -->|Full Strict<br/>ACM cert| ALB
     ALB --> Web
     Web -. enqueue .-> Sk
@@ -156,7 +156,7 @@ Source: [`docs/diagrams/architecture.puml`](docs/diagrams/architecture.puml). Re
 
 | Layer              | Component                            | Why it's there                                                                                |
 |--------------------|--------------------------------------|-----------------------------------------------------------------------------------------------|
-| **Edge / TLS**     | Cloudflare DNS + CDN (proxied)       | Authoritative for `labmgm.org`; CDN cache; DDoS shield; Full (Strict) to origin               |
+| **Edge / TLS**     | Cloudflare DNS + CDN (proxied)       | Authoritative for YOUR_DOMAIN; CDN cache; DDoS shield; Full (Strict) to origin               |
 | **Edge / TLS**     | ACM public cert                      | DNS-validated through Cloudflare; terminated on ALB                                           |
 | **Ingress**        | AWS Load Balancer Controller → ALB   | L7 routing, health checks, TLS termination                                                    |
 | **Compute**        | EKS 1.32 (control plane)             | Managed Kubernetes API + etcd                                                                 |
@@ -475,17 +475,17 @@ flowchart TD
 You also need:
 
 - An **AWS profile** with admin-equivalent access in `ap-southeast-1`.
-- A **Cloudflare API token** scoped to `labmgm.org` with `Zone.Zone:Read` + `Zone.DNS:Edit`.
+- A **Cloudflare API token** scoped to your domain with `Zone.Zone:Read` + `Zone.DNS:Edit`.
 
 ### Three commands
 
 ```bash
-git clone https://github.com/shirasakaren/infra-chatwoot chatwoot-ta && cd chatwoot-ta
-cp .env.example .env             # fill OWNER + CLOUDFLARE_API_TOKEN + GITHUB_OWNER/REPO
+git clone https://github.com/shirasakaren/infra-chatwoot.git chatwoot-ta && cd chatwoot-ta
+cp .env.example .env              # fill OWNER + CLOUDFLARE_API_TOKEN + GITHUB_OWNER/REPO
 ./deploy.sh                       # preflight → bootstrap → discovery → approval → end-to-end
 ```
 
-After `./deploy.sh` finishes, open [`https://support.labmgm.org`](https://support.labmgm.org) and check the verification table printed at the end. Keep that tab open, the demo will need it.
+After `./deploy.sh` finishes, open your endpoint and check the verification table printed at the end. Keep that tab open, the demo will need it.
 
 <details>
 <summary><b>What deploy.sh actually does, in order</b></summary>
@@ -531,10 +531,10 @@ flowchart LR
 | `OWNER`                | Your name/handle (resource tag)                                       |
 | `AWS_REGION`           | `ap-southeast-1` (don't change)                                       |
 | `NAME_PREFIX`          | Short lowercase prefix (default `cwta`)                               |
-| `DOMAIN`               | Public FQDN (`support.labmgm.org`)                                    |
-| `FRONTEND_URL`         | `https://support.labmgm.org`                                          |
-| `CLOUDFLARE_API_TOKEN` | Scoped token for the `labmgm.org` zone                                 |
-| `CLOUDFLARE_ZONE`      | `labmgm.org`                                                          |
+| `DOMAIN`               | Public FQDN                                  |
+| `FRONTEND_URL`         | `FRONTEND_URL`                                          |
+| `CLOUDFLARE_API_TOKEN` | Scoped token for the your domain zone                                 |
+| `CLOUDFLARE_ZONE`      | CLOUDFLARE_ZONE                                                         |
 | `GITHUB_OWNER` / `GITHUB_REPO` | Used to scope the GHA OIDC IAM role                          |
 
 <details>
@@ -604,7 +604,7 @@ pie showData
 - Add-ons Running: ALB controller, cluster-autoscaler, metrics-server, ESO.
 - `ExternalSecret chatwoot-env` `Ready=True`.
 - Chatwoot: ≥ 2 web Ready, ≥ 2 sidekiq Ready; HPA + PDB present.
-- Ingress has ALB hostname; `curl -I https://support.labmgm.org` → 200/301/302.
+- Ingress has ALB hostname; `curl -I YOUR_DOMAIN` → 200/301/302.
 - SES domain DKIM verified.
 - IAM groups + IRSA roles exist (Manajemen User evidence).
 - New VPC ID does NOT match any pre-existing VPC in `do-not-touch.json`.
@@ -763,7 +763,7 @@ Disabled by request; env keys are present in `.env.example` but blank. Populate 
 <details>
 <summary><b>Preflight fails on Cloudflare token</b></summary>
 
-The token needs **both** `Zone.Zone:Read` and `Zone.DNS:Edit` scoped to `labmgm.org`. The zone-list endpoint must return that zone, and preflight verifies this explicitly.
+The token needs **both** `Zone.Zone:Read` and `Zone.DNS:Edit` scoped to your domain. The zone-list endpoint must return that zone, and preflight verifies this explicitly.
 
 </details>
 
