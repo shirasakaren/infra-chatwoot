@@ -2,7 +2,7 @@
 # deploy.sh aka the button that makes everything happen. or explode.
 # this script started as "phase 0 only lol" and then the phases just kept
 # showing up like uninvited guests at a group project.
-# it's idempotent-ish. re-running is fine. probably. we don't ask questions.
+# it's idempotent-ish. re-running is fine. probably. (verified exactly once, trust me)
 
 set -euo pipefail
 
